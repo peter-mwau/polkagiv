@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import Navbar2 from "./components/Navbar2";
 import { useState } from "react";
 import CreateCampaign from "./components/CreateCampaign";
 import CampaignsGrid from "./components/CampaignsGrid";
@@ -27,8 +26,6 @@ export default function Home() {
 
   return (
     <>
-      <Navbar2 />
-
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-black pt-16">
         <main className="flex min-h-screen w-full max-w-7xl mx-auto flex-col items-center justify-between py-32 px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-4xl mx-auto space-y-8">

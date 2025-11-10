@@ -7,6 +7,7 @@ import Providers from "./providers/Provider";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { CampaignsProvider } from "./contexts/CampaignsContext";
+import Navbar2 from "./components/Navbar2";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,6 +38,7 @@ export default function RootLayout({
           <Providers>
             <CampaignsProvider>
               <WalletProvider>
+                <Navbar2 />
                 {children}
                 <ToastContainer
                   position="top-right"
