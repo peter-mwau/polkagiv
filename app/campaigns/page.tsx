@@ -15,10 +15,10 @@ export default function CampaignsExplorerPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-black mt-[60px]">
-      <div className="flex h-screen">
+    <div className=" bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-black mt-[20px] pt-[50px]">
+      <div className="flex max-w-[70%] items-center mx-auto min-h-screen  rounded-lg shadow-lg overflow-hidden">
         {/* Sidebar - 20% */}
-        <div className="w-80 border-r border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
+        <div className="w-80 rounded-2xl border-r border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
           <CampaignsSidebar
             selectedCampaign={selectedCampaign}
             onSelectCampaign={handleSelectCampaign}
@@ -26,7 +26,7 @@ export default function CampaignsExplorerPage() {
         </div>
 
         {/* Main Content - 80% */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden ml-4">
           {selectedCampaign ? (
             <CampaignDetails
               campaign={selectedCampaign}

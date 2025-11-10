@@ -46,7 +46,7 @@ export default function CampaignDetails({
   const isSuccessful = campaign.totalDonated >= campaign.goalAmount;
 
   return (
-    <div className="h-full overflow-y-auto bg-white dark:bg-gray-900">
+    <div className="h-[85vh] overflow-y-auto bg-white dark:bg-gray-900 rounded-2xl">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700">
         <div className="p-6">

@@ -108,9 +108,9 @@ export default function CampaignsSidebar({
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-[85vh] flex flex-col">
       {/* Header */}
-      <div className="p-6 border-b border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
+      <div className="p-6 rounded-2xl bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">
             Campaigns
