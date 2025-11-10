@@ -11,12 +11,16 @@
   "dependencies": {
     "@polkadot/api": "^16.4.9",
     "@polkadot/extension-dapp": "^0.62.2",
+    "@rainbow-me/rainbowkit": "^2.2.9",
+    "ethers": "^6.15.0",
     "lucide-react": "^0.546.0",
     "next": "16.0.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-icons": "^5.5.0",
-    "viem": "^2.38.5"
+    "react-toastify": "^11.0.5",
+    "viem": "^2.38.6",
+    "wagmi": "^2.19.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

@@ -4,9 +4,26 @@ import Image from "next/image";
 import Navbar2 from "./components/Navbar2";
 import { useState } from "react";
 import CreateCampaign from "./components/CreateCampaign";
+import CampaignsGrid from "./components/CampaignsGrid";
+import { Campaign } from "./hooks/useContract";
 
 export default function Home() {
   const [openCreateCampaign, setOpenCreateCampaign] = useState(false);
+  const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(
+    null
+  );
+  const [showDetails, setShowDetails] = useState(false);
+  const [showDonation, setShowDonation] = useState(false);
+
+  const handleViewDetails = (campaign: Campaign) => {
+    setSelectedCampaign(campaign);
+    setShowDetails(true);
+  };
+
+  const handleDonate = (campaign: Campaign) => {
+    setSelectedCampaign(campaign);
+    setShowDonation(true);
+  };
 
   return (
     <>
@@ -108,6 +125,11 @@ export default function Home() {
                 </div>
               ))}
             </div>
+
+            <CampaignsGrid
+              onViewDetails={handleViewDetails}
+              onDonate={handleDonate}
+            />
           </div>
         </main>
 

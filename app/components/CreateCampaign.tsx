@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { useWallet } from "../contexts/WalletContext";
-import { useCampaign } from "../hooks/useCampaign";
+import { useAccount } from "wagmi";
+import { useContract } from "../hooks/useContract";
 
 export type CreateCampaignData = {
   name: string;
@@ -19,8 +19,8 @@ type Props = {
 };
 
 export default function CreateCampaign({ onCreate, initial, onClose }: Props) {
-  const { isConnected } = useWallet();
-  const { createCampaign, isLoading, error: contractError } = useCampaign();
+  const { isConnected } = useAccount();
+  const { createCampaign, isLoading } = useContract();
 
   const [name, setName] = useState(initial?.name || "");
   const [description, setDescription] = useState(initial?.description || "");
@@ -29,7 +29,7 @@ export default function CreateCampaign({ onCreate, initial, onClose }: Props) {
     initial?.durationInDays || 7
   );
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null); // Renamed to avoid confusion
 
   const deadlineTs = useMemo(() => {
     const secs = Math.floor(Date.now() / 1000) + durationInDays * 24 * 60 * 60;
@@ -53,16 +53,16 @@ export default function CreateCampaign({ onCreate, initial, onClose }: Props) {
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    setError(null);
+    setFormError(null);
 
     if (!isConnected) {
-      setError("Please connect your wallet first");
+      setFormError("Please connect your wallet first");
       return;
     }
 
     const v = validate();
     if (v) {
-      setError(v);
+      setFormError(v);
       return;
     }
 
@@ -76,7 +76,7 @@ export default function CreateCampaign({ onCreate, initial, onClose }: Props) {
     try {
       setSubmitting(true);
 
-      // Use the contract hook to create campaign
+      // Use the contract hook to create campaign - toasts are handled inside the hook
       const result = await createCampaign(payload);
 
       console.log("Campaign created successfully:", result);
@@ -87,14 +87,12 @@ export default function CreateCampaign({ onCreate, initial, onClose }: Props) {
           ...payload,
           deadlineTs,
         });
-      } else {
-        alert("Campaign created successfully on blockchain!");
       }
 
+      // Close the modal after successful creation
       onClose?.();
     } catch (err: any) {
       console.error("Error in handleSubmit:", err);
-      setError(err.message || "Failed to create campaign");
     } finally {
       setSubmitting(false);
     }
@@ -105,11 +103,8 @@ export default function CreateCampaign({ onCreate, initial, onClose }: Props) {
     setDescription("");
     setGoalAmount("");
     setDurationInDays(7);
-    setError(null);
+    setFormError(null);
   };
-
-  // Combine form errors and contract errors
-  const displayError = error || contractError;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
@@ -147,7 +142,8 @@ export default function CreateCampaign({ onCreate, initial, onClose }: Props) {
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {displayError && (
+          {/* Only show form validation errors, contract errors are handled by toasts */}
+          {formError && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
               <div className="flex items-center">
                 <svg
@@ -162,7 +158,7 @@ export default function CreateCampaign({ onCreate, initial, onClose }: Props) {
                   />
                 </svg>
                 <span className="text-red-800 dark:text-red-200 font-medium">
-                  {displayError}
+                  {formError}
                 </span>
               </div>
             </div>
