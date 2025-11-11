@@ -15,7 +15,7 @@ export default function CampaignsExplorerPage() {
   };
 
   return (
-    <div className=" bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-black mt-[20px] pt-[50px]">
+    <div className=" bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-black pt-[50px]">
       <div className="flex max-w-[70%] items-center mx-auto min-h-screen  rounded-lg shadow-lg overflow-hidden">
         {/* Sidebar - 20% */}
         <div className="w-80 rounded-2xl border-r border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">

@@ -285,6 +285,66 @@ export function useContract() {
     }
   };
 
+  //setToken allowed
+  const setTokenAllowed = async (tokenAddress: string, allowed: boolean) => {
+    if (!isConnected || !address) {
+      toast.error('Please connect your wallet first');
+      throw new Error('Wallet not connected');
+    }
+
+    setIsLoading(true);
+    const toastId = toast.loading('Updating token allowance...');
+
+    try {
+      const contract = await getContract();
+
+      toast.update(toastId, { render: 'Confirming update in your wallet...' });
+
+      const transaction = await contract.setAllowedToken(
+        tokenAddress,
+        allowed
+      );
+
+      toast.update(toastId, { render: 'Update submitted. Waiting for confirmation...' });
+
+      const receipt = await transaction.wait();
+
+      toast.update(toastId, { 
+        render: 'Token allowance updated successfully! ✅', 
+        type: 'success', 
+        isLoading: false,
+        autoClose: 5000 
+      });
+
+      return {
+        success: true,
+        transactionHash: receipt.hash,
+        receipt
+      };
+
+    } catch (err: any) {
+      console.error('Error updating token allowance:', err);
+      
+      let errorMessage = 'Failed to update token allowance';
+      if (err.code === 'ACTION_REJECTED') {
+        errorMessage = 'Transaction was rejected by user';
+      } else if (err.reason) {
+        errorMessage = err.reason;
+      }
+
+      toast.update(toastId, { 
+        render: errorMessage, 
+        type: 'error', 
+        isLoading: false,
+        autoClose: 5000 
+      });
+
+      throw new Error(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Cancel a campaign
   const cancelCampaign = async (campaignId: number) => {
     if (!isConnected || !address) {
@@ -414,6 +474,19 @@ export function useContract() {
     }
   };
 
+  //check role
+  const hasRole = async (role: string): Promise<boolean> => {
+  try {
+    const contract = await getContract();
+    const roleBytes = ethers.keccak256(ethers.toUtf8Bytes(role));
+    const hasRole = await contract.hasRole(roleBytes, address);
+    return hasRole;
+  } catch (err) {
+    console.error('Error checking role:', err);
+    return false;
+  }
+};
+
   const getCampaignById = async (campaignId: number): Promise<Campaign> => {
     try {
       const contract = await getContract();
@@ -465,6 +538,7 @@ export function useContract() {
     withdrawFunds,
     cancelCampaign,
     refundDonation,
+    setTokenAllowed,
     
     // Read functions
     getAllCampaigns,
@@ -472,6 +546,7 @@ export function useContract() {
     getCampaignDonations,
     isCampaignSuccessful,
     getCampaignFundsByToken,
+    hasRole,
     
     // State
     isLoading,

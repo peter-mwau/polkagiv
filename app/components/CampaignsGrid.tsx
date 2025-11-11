@@ -20,13 +20,11 @@ export default function CampaignsGrid({
     "all" | "active" | "successful" | "ended"
   >("all");
   const [isSpread, setIsSpread] = useState(false);
-  const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(null);
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [peelingCampaign, setPeelingCampaign] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<"stacked" | "grid">("stacked");
 
   // Sort campaigns by creation date (newest first) for stacking
   const sortedCampaigns = [...campaigns].sort(
-    (a, b) => Number(b.createdAt) - Number(a.createdAt)
+    (a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0)
   );
 
   // Filter campaigns based on selected filter
@@ -54,222 +52,28 @@ export default function CampaignsGrid({
     }
   });
 
-  // Auto-spread after initial load
+  // Auto-show as grid after initial load if there are campaigns
   useEffect(() => {
-    if (isInitialLoad && filteredCampaigns.length > 0 && !loading) {
+    if (filteredCampaigns.length > 0 && !loading) {
       const timer = setTimeout(() => {
-        setIsSpread(true);
-        setIsInitialLoad(false);
-      }, 1000);
+        setViewMode("grid");
+      }, 500);
       return () => clearTimeout(timer);
     }
-  }, [filteredCampaigns.length, loading, isInitialLoad]);
+  }, [filteredCampaigns.length, loading]);
 
-  const handleCardClick = (campaign: Campaign) => {
-    if (!isSpread) {
-      setIsSpread(true);
-      // Start peel animation
-      setPeelingCampaign(campaign.id);
-      // After peel animation completes, set as active
-      setTimeout(() => {
-        setActiveCampaign(campaign);
-        setPeelingCampaign(null);
-      }, 600);
-    } else {
-      setActiveCampaign(campaign);
-    }
-  };
-
-  const handleCloseActive = () => {
-    setActiveCampaign(null);
-  };
-
-  const handleContainerHover = () => {
-    if (!isSpread && !activeCampaign) {
-      setIsSpread(true);
-    }
-  };
-
-  const handleContainerLeave = () => {
-    if (isSpread && !activeCampaign && filteredCampaigns.length > 3) {
-      setIsSpread(false);
-    }
-  };
-
-  // Calculate stack positions
-  const getStackPosition = (index: number) => {
-    if (isSpread || activeCampaign) {
-      return {
-        zIndex: 10 + index,
-        transform: "translateX(0) translateY(0) rotate(0deg)",
-      };
-    }
-
-    const totalCards = Math.min(filteredCampaigns.length, 5);
-    const stackOffset = 8;
-    const maxRotation = 3;
-
-    if (index >= totalCards) {
-      return {
-        zIndex: 10,
-        transform: "translateX(0) translateY(0) rotate(0deg)",
-        opacity: 0,
-      };
-    }
-
-    const position = totalCards - index - 1;
-    const rotation = (Math.random() - 0.5) * maxRotation * 2;
-    const xOffset = (Math.random() - 0.5) * stackOffset;
-
-    return {
-      zIndex: 10 + position,
-      transform: `translateX(${xOffset}px) translateY(${
-        position * stackOffset
-      }px) rotate(${rotation}deg)`,
-    };
-  };
-
-  // Stacked Card Cover Component
-  const StackedCardCover = ({
-    campaign,
-    index,
-  }: {
-    campaign: Campaign;
-    index: number;
-  }) => {
-    const stackStyle = getStackPosition(index);
-    const isPeeling = peelingCampaign === campaign.id;
-
-    return (
-      <div
-        className={`
-          absolute w-80 h-48 cursor-pointer
-          transition-all duration-500 ease-out
-          ${isPeeling ? "scale-110 rotate-6 z-50" : ""}
-        `}
-        style={stackStyle}
-        onClick={() => handleCardClick(campaign)}
-      >
-        {/* Main Cover */}
-        <div
-          className={`
-            w-full h-full rounded-2xl bg-gradient-to-br from-blue-600 to-purple-700
-            shadow-2xl border-2 border-white/20 backdrop-blur-sm
-            transition-all duration-300
-            ${isPeeling ? "opacity-0 scale-95" : "opacity-100"}
-            group hover:scale-105 hover:shadow-xl
-          `}
-        >
-          {/* Shine Effect */}
-          <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent rounded-2xl" />
-
-          {/* Content */}
-          <div className="relative p-6 h-full flex flex-col justify-between">
-            {/* Campaign Title */}
-            <div className="text-white">
-              <h3 className="text-xl font-bold truncate drop-shadow-lg">
-                {campaign.name}
-              </h3>
-              <p className="text-white/80 text-sm mt-1">
-                by {campaign.creator.slice(0, 6)}...{campaign.creator.slice(-4)}
-              </p>
-            </div>
-
-            {/* Peel Hint */}
-            <div className="flex items-center justify-between">
-              <div className="text-white/70 text-sm">#{campaign.id}</div>
-              <div className="flex items-center space-x-1 text-white/60">
-                <span className="text-xs">Click to reveal</span>
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          {/* Peel Corner Effect */}
-          <div
-            className={`
-              absolute top-4 right-4 w-6 h-6
-              transition-all duration-300
-              ${isPeeling ? "opacity-0 scale-150" : "opacity-100"}
-              group-hover:scale-110 group-hover:rotate-12
-            `}
-          >
-            <div className="w-full h-full bg-white/20 rounded-full flex items-center justify-center">
-              <svg
-                className="w-3 h-3 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                />
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        {/* Peel Animation Layer */}
-        {isPeeling && (
-          <div
-            className="absolute inset-0 rounded-2xl overflow-hidden"
-            style={{
-              transform: "perspective(1000px) rotateX(5deg) rotateY(-5deg)",
-              transformStyle: "preserve-3d",
-            }}
-          >
-            {/* Peeling Corner */}
-            <div
-              className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-bl-full shadow-2xl"
-              style={{
-                transform: "rotate(45deg) translate(20px, -20px)",
-                animation: "peel 0.6s ease-out forwards",
-              }}
-            >
-              <style jsx>{`
-                @keyframes peel {
-                  0% {
-                    transform: rotate(45deg) translate(0, 0) scale(1);
-                    opacity: 1;
-                  }
-                  100% {
-                    transform: rotate(45deg) translate(40px, -40px) scale(1.2);
-                    opacity: 0;
-                  }
-                }
-              `}</style>
-            </div>
-          </div>
-        )}
-      </div>
-    );
+  const toggleViewMode = () => {
+    setViewMode((prev) => (prev === "stacked" ? "grid" : "stacked"));
+    setIsSpread(false);
   };
 
   if (loading) {
     return (
       <div className="flex justify-center items-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+        <div className="relative">
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-gray-200 dark:border-gray-700"></div>
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent absolute inset-0"></div>
+        </div>
       </div>
     );
   }
@@ -306,6 +110,34 @@ export default function CampaignsGrid({
     );
   }
 
+  if (filteredCampaigns.length === 0) {
+    return (
+      <div className="text-center py-16">
+        <div className="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-2xl p-12 max-w-md mx-auto">
+          <svg
+            className="w-16 h-16 text-gray-400 dark:text-gray-500 mx-auto mb-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+            />
+          </svg>
+          <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+            No campaigns found
+          </h3>
+          <p className="text-gray-600 dark:text-gray-400">
+            Try adjusting your filters or check back later for new campaigns.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       {/* Header and Filters */}
@@ -317,16 +149,58 @@ export default function CampaignsGrid({
           <p className="text-gray-600 dark:text-gray-400 mt-1">
             {filteredCampaigns.length} campaign
             {filteredCampaigns.length !== 1 ? "s" : ""} found
-            {!isSpread && " • Click to reveal details"}
           </p>
         </div>
 
         <div className="flex flex-wrap gap-2">
+          {/* View Toggle */}
+          <button
+            onClick={toggleViewMode}
+            className="px-4 py-2 rounded-lg font-medium transition-all duration-300 bg-gradient-to-r from-blue-500 to-purple-500 text-white hover:shadow-lg hover:scale-105 active:scale-95"
+          >
+            {viewMode === "stacked" ? (
+              <span className="flex items-center gap-2">
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
+                  />
+                </svg>
+                Grid View
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                  />
+                </svg>
+                Stack View
+              </span>
+            )}
+          </button>
+
+          {/* Filters */}
           <button
             onClick={() => setFilter("all")}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
+            className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
               filter === "all"
-                ? "bg-blue-500 text-white"
+                ? "bg-blue-500 text-white shadow-md scale-105"
                 : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
             }`}
           >
@@ -334,9 +208,9 @@ export default function CampaignsGrid({
           </button>
           <button
             onClick={() => setFilter("active")}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
+            className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
               filter === "active"
-                ? "bg-green-500 text-white"
+                ? "bg-green-500 text-white shadow-md scale-105"
                 : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
             }`}
           >
@@ -344,9 +218,9 @@ export default function CampaignsGrid({
           </button>
           <button
             onClick={() => setFilter("successful")}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
+            className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
               filter === "successful"
-                ? "bg-purple-500 text-white"
+                ? "bg-purple-500 text-white shadow-md scale-105"
                 : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
             }`}
           >
@@ -354,9 +228,9 @@ export default function CampaignsGrid({
           </button>
           <button
             onClick={() => setFilter("ended")}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
+            className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
               filter === "ended"
-                ? "bg-gray-500 text-white"
+                ? "bg-gray-500 text-white shadow-md scale-105"
                 : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
             }`}
           >
@@ -366,115 +240,100 @@ export default function CampaignsGrid({
       </div>
 
       {/* Cards Container */}
-      <div
-        className="relative"
-        onMouseEnter={handleContainerHover}
-        onMouseLeave={handleContainerLeave}
-      >
-        {/* Stacked Covers View */}
-        {!isSpread && !activeCampaign && (
-          <div className="relative min-h-96 flex justify-center items-start pt-20">
-            {filteredCampaigns.map((campaign, index) => (
-              <StackedCardCover
-                key={campaign.id}
-                campaign={campaign}
-                index={index}
-              />
+      {viewMode === "stacked" ? (
+        /* Stacked View with Spread Animation */
+        <div
+          className="relative h-auto pt-[100px] flex justify-center items-center"
+          style={{ perspective: "2000px" }}
+          onMouseEnter={() => setIsSpread(true)}
+          onMouseLeave={() => setIsSpread(false)}
+        >
+          <div className="relative w-full max-w-md">
+            {filteredCampaigns.slice(0, 5).map((campaign, index) => (
+              <div key={campaign.id} className="absolute top-0 left-0 w-full">
+                <CampaignCard
+                  campaign={campaign}
+                  onViewDetails={onViewDetails}
+                  onDonate={onDonate}
+                  index={index}
+                  totalCards={Math.min(filteredCampaigns.length, 5)}
+                  isGroupHovered={isSpread}
+                  isStacked={true}
+                />
+              </div>
             ))}
           </div>
-        )}
 
-        {/* Spread Grid View */}
-        {(isSpread || activeCampaign) && (
-          <div
-            className={`
-            transition-all duration-700 ease-out
-            ${
-              isSpread || activeCampaign
-                ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
-                : ""
-            }
-          `}
-          >
-            {filteredCampaigns.map((campaign, index) => {
-              const isActive = activeCampaign?.id === campaign.id;
-
-              return (
-                <div
-                  key={campaign.id}
-                  className={`
-                    transition-all duration-500 ease-out
-                    ${
-                      isActive ? "z-50 scale-105" : "hover:scale-105 hover:z-40"
-                    }
-                  `}
+          {/* Hint Text */}
+          {!isSpread && (
+            <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2">
+              <div className="flex items-center space-x-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm px-4 py-2 rounded-full border border-gray-200 dark:border-gray-700 shadow-lg animate-bounce">
+                <span className="text-sm text-gray-600 dark:text-gray-400">
+                  Hover to spread cards
+                </span>
+                <svg
+                  className="w-4 h-4 text-gray-600 dark:text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
                 >
-                  <CampaignCard
-                    campaign={campaign}
-                    onViewDetails={(camp) => {
-                      handleCardClick(camp);
-                      onViewDetails(camp);
-                    }}
-                    onDonate={(camp) => {
-                      handleCardClick(camp);
-                      onDonate(camp);
-                    }}
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M7 11l5-5m0 0l5 5m-5-5v12"
                   />
-                </div>
-              );
-            })}
-          </div>
-        )}
+                </svg>
+              </div>
+            </div>
+          )}
 
-        {/* Overlay for active card */}
-        {activeCampaign && (
-          <div
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 flex items-center justify-center p-4"
-            onClick={handleCloseActive}
-          >
+          {/* Show more campaigns indicator */}
+          {filteredCampaigns.length > 5 && (
+            <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2">
+              <div className="bg-blue-500/10 text-blue-700 dark:text-blue-300 px-4 py-2 rounded-full border border-blue-500/20">
+                <span className="text-sm font-medium">
+                  +{filteredCampaigns.length - 5} more campaigns
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Grid View */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {filteredCampaigns.map((campaign, index) => (
             <div
-              className="relative z-50 max-w-4xl w-full max-h-[90vh] overflow-y-auto"
-              onClick={(e) => e.stopPropagation()}
+              key={campaign.id}
+              className="transform transition-all duration-500 hover:scale-105"
+              style={{
+                animation: `fadeInUp 0.5s ease-out ${index * 0.1}s both`,
+              }}
             >
               <CampaignCard
-                campaign={activeCampaign}
+                campaign={campaign}
                 onViewDetails={onViewDetails}
                 onDonate={onDonate}
+                isStacked={false}
               />
-              <button
-                onClick={handleCloseActive}
-                className="absolute -top-4 -right-4 bg-red-500 hover:bg-red-600 text-white w-8 h-8 rounded-full flex items-center justify-center shadow-lg transition-colors duration-200"
-              >
-                ×
-              </button>
             </div>
-          </div>
-        )}
+          ))}
+        </div>
+      )}
 
-        {/* Stack Visual Guide */}
-        {!isSpread && !activeCampaign && filteredCampaigns.length > 0 && (
-          <div className="text-center mt-32">
-            <div className="inline-flex items-center space-x-2 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm px-4 py-2 rounded-full border border-gray-200 dark:border-gray-700">
-              <svg
-                className="w-4 h-4 text-gray-600 dark:text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 9l-7 7-7-7"
-                />
-              </svg>
-              <span className="text-sm text-gray-600 dark:text-gray-400">
-                Click any card to peel and reveal details
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Add keyframes for fade in animation */}
+      <style jsx>{`
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(30px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   );
 }
