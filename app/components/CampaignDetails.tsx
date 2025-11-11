@@ -1,9 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Campaign } from "../contexts/CampaignsContext";
 import { ethers } from "ethers";
 import { useAccount } from "wagmi";
+import { toast } from "react-toastify";
+import DonationModal from "./DonationModal";
+import { useContract } from "../hooks/useContract";
 
 interface CampaignDetailsProps {
   campaign: Campaign;
@@ -18,10 +21,29 @@ export default function CampaignDetails({
   const [activeTab, setActiveTab] = useState<
     "overview" | "analytics" | "donations"
   >("overview");
+  const [showDonationModal, setShowDonationModal] = useState(false);
+  const [campaignDonations, setCampaignDonations] = useState<any[]>([]);
+  const [isLoadingDonations, setIsLoadingDonations] = useState(false);
+  const { getCampaignDonations } = useContract();
 
-  const formatETH = (wei: bigint) => {
-    return ethers.formatEther(wei);
-  };
+  useEffect(() => {
+    const fetchDonations = async () => {
+      if (activeTab === "donations") {
+        setIsLoadingDonations(true);
+        try {
+          const donations = await getCampaignDonations(campaign.id);
+          setCampaignDonations(donations);
+        } catch (error) {
+          console.error("Error fetching donations:", error);
+          toast.error("Failed to load donation history");
+        } finally {
+          setIsLoadingDonations(false);
+        }
+      }
+    };
+
+    fetchDonations();
+  }, [activeTab, campaign.id]);
 
   const formatDate = (timestamp: bigint) => {
     return new Date(Number(timestamp) * 1000).toLocaleDateString("en-US", {
@@ -34,7 +56,13 @@ export default function CampaignDetails({
   };
 
   const progress =
-    (Number(campaign.totalDonated) / Number(campaign.goalAmount)) * 100;
+    campaign.totalDonated > 0n
+      ? Math.min(
+          (Number(campaign.totalDonated) / Number(campaign.goalAmount)) * 100,
+          100
+        )
+      : 0;
+
   const daysLeft = Math.max(
     0,
     Math.ceil(
@@ -44,6 +72,14 @@ export default function CampaignDetails({
   const isActive = campaign.active && !campaign.cancelled && !campaign.funded;
   const isExpired = Date.now() > Number(campaign.deadline) * 1000;
   const isSuccessful = campaign.totalDonated >= campaign.goalAmount;
+
+  // Recent donations within the last 24 hours (newest first)
+  const recentDonations = [...campaignDonations]
+    .sort((a, b) => Number(b.timestamp) - Number(a.timestamp))
+    .filter(
+      (d) => Number(d.timestamp) * 1000 >= Date.now() - 24 * 60 * 60 * 1000
+    )
+    .slice(0, 5);
 
   return (
     <div className="h-[85vh] overflow-y-auto bg-white dark:bg-gray-900 rounded-2xl">
@@ -82,7 +118,10 @@ export default function CampaignDetails({
             </div>
             <div className="flex items-center space-x-3">
               {isActive && !isExpired && (
-                <button className="bg-gradient-to-r from-green-500 to-blue-600 hover:from-green-600 hover:to-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition-all duration-200 shadow-lg hover:shadow-xl">
+                <button
+                  onClick={() => setShowDonationModal(true)}
+                  className="bg-gradient-to-r from-green-500 to-blue-600 hover:from-green-600 hover:to-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition-all duration-200 shadow-lg hover:shadow-xl"
+                >
                   {isConnected ? "Donate Now" : "Connect Wallet"}
                 </button>
               )}
@@ -152,7 +191,7 @@ export default function CampaignDetails({
               <div className="grid grid-cols-2 gap-4 text-center">
                 <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-4 backdrop-blur-sm">
                   <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {formatETH(campaign.totalDonated)}
+                    {ethers.formatUnits(campaign.totalDonated, 18)} USDC
                   </div>
                   <div className="text-sm text-gray-600 dark:text-gray-400">
                     Raised
@@ -160,7 +199,7 @@ export default function CampaignDetails({
                 </div>
                 <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-4 backdrop-blur-sm">
                   <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {formatETH(campaign.goalAmount)}
+                    {ethers.formatUnits(campaign.goalAmount, 18)} USDC
                   </div>
                   <div className="text-sm text-gray-600 dark:text-gray-400">
                     Goal
@@ -298,39 +337,203 @@ export default function CampaignDetails({
         )}
 
         {activeTab === "donations" && (
-          <div className="text-center py-12">
-            <div className="w-24 h-24 bg-gradient-to-r from-green-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg
-                className="w-12 h-12 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-            </div>
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-3">
-              Donation History
-            </h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-6 max-w-md mx-auto">
-              View all donations made to this campaign. Track contributor
-              addresses, donation amounts, and timestamps for complete
-              transparency.
-            </p>
-            <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 border border-green-200 dark:border-green-800 max-w-md mx-auto">
-              <p className="text-sm text-green-800 dark:text-green-200">
-                💝 <strong>Feature Preview:</strong> Complete donation history
-                with export capabilities.
-              </p>
-            </div>
+          <div className="space-y-6">
+            {isLoadingDonations ? (
+              <div className="flex justify-center items-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+              </div>
+            ) : (
+              <>
+                <div className="flex justify-between items-center">
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                    Donation History
+                  </h3>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    {campaignDonations?.length || 0} donation
+                    {(campaignDonations?.length || 0) !== 1 ? "s" : ""}
+                  </div>
+                </div>
+
+                {/* Donation Statistics */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+                    <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                      {ethers.formatUnits(campaign.totalDonated, 18)}
+                    </div>
+                    <div className="text-sm text-blue-700 dark:text-blue-300">
+                      Total Raised
+                    </div>
+                  </div>
+                  <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 border border-green-200 dark:border-green-800">
+                    <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                      {campaignDonations?.length || 0}
+                    </div>
+                    <div className="text-sm text-green-700 dark:text-green-300">
+                      Total Donations
+                    </div>
+                  </div>
+                  <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
+                    <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                      {campaignDonations?.length > 0
+                        ? parseFloat(
+                            ethers.formatUnits(
+                              campaign.totalDonated /
+                                BigInt(campaignDonations.length),
+                              18
+                            )
+                          ).toFixed(2)
+                        : "0.00"}
+                    </div>
+                    <div className="text-sm text-purple-700 dark:text-purple-300">
+                      Average Donation
+                    </div>
+                  </div>
+                </div>
+
+                {/* Donations List */}
+                <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  {campaignDonations && campaignDonations.length > 0 ? (
+                    <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                      {[...campaignDonations]
+                        .sort(
+                          (a, b) => Number(b.timestamp) - Number(a.timestamp)
+                        )
+                        .map((donation, index) => (
+                          <div
+                            key={index}
+                            className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors duration-200"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-4">
+                                {/* Donor Avatar */}
+                                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                                  <span className="text-white font-semibold text-sm">
+                                    {donation.donor.slice(2, 4).toUpperCase()}
+                                  </span>
+                                </div>
+
+                                <div>
+                                  <div className="font-mono text-sm text-gray-900 dark:text-white">
+                                    {donation.donor.slice(0, 8)}...
+                                    {donation.donor.slice(-6)}
+                                  </div>
+                                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                                    {new Date(
+                                      Number(donation.timestamp) * 1000
+                                    ).toLocaleDateString("en-US", {
+                                      year: "numeric",
+                                      month: "short",
+                                      day: "numeric",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="text-right">
+                                <div className="text-lg font-bold text-green-600 dark:text-green-400">
+                                  +{ethers.formatUnits(donation.amount, 18)}{" "}
+                                  USDC
+                                </div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400">
+                                  Donation #{index + 1}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Progress impact (optional) */}
+                            <div className="mt-3 flex items-center space-x-2">
+                              <div className="text-xs text-gray-500 dark:text-gray-400">
+                                Contributed{" "}
+                                {(
+                                  (Number(donation.amount) /
+                                    Number(campaign.goalAmount)) *
+                                  100
+                                ).toFixed(2)}
+                                % to goal
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  ) : (
+                    /* Empty State */
+                    <div className="text-center py-12">
+                      <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg
+                          className="w-8 h-8 text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
+                      </div>
+                      <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                        No Donations Yet
+                      </h4>
+                      <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto">
+                        Be the first to support this campaign! Your contribution
+                        will appear here and help inspire others to donate.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Recent Activity Timeline (Alternative View) */}
+                {recentDonations && recentDonations.length > 0 && (
+                  <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700">
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                      Recent Activity
+                    </h4>
+                    <div className="space-y-4">
+                      {recentDonations.map((donation, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center space-x-3"
+                        >
+                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                          <div className="flex-1">
+                            <span className="text-sm text-gray-900 dark:text-white">
+                              New donation from {donation.donor.slice(0, 6)}
+                              ...
+                              {donation.donor.slice(-4)}
+                            </span>
+                            <span className="text-sm text-green-600 dark:text-green-400 ml-2">
+                              {ethers.formatUnits(donation.amount, 18)} USDC
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                            {new Date(
+                              Number(donation.timestamp) * 1000
+                            ).toLocaleDateString()}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>
+
+      <DonationModal
+        campaign={campaign}
+        isOpen={showDonationModal}
+        onClose={() => setShowDonationModal(false)}
+        onDonationSuccess={() => {
+          // Refresh campaign data or show success message
+          toast.success("Donation completed successfully!");
+        }}
+      />
     </div>
   );
 }

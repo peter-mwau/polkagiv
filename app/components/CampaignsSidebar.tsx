@@ -47,8 +47,8 @@ export default function CampaignsSidebar({
     return matchesSearch && matchesFilter;
   });
 
-  const formatETH = (wei: bigint) => {
-    return ethers.formatEther(wei);
+  const formatUSDC = (amount: bigint) => {
+    return ethers.formatUnits(amount, 18); // USDC has 6 decimals
   };
 
   const getStatusColor = (campaign: Campaign) => {
@@ -247,16 +247,16 @@ export default function CampaignsSidebar({
               <div className="flex justify-between text-xs">
                 <div className="text-gray-600 dark:text-gray-400">
                   <span className="font-semibold text-gray-900 dark:text-white">
-                    {formatETH(campaign.totalDonated)}
+                    {formatUSDC(campaign.totalDonated)}
                   </span>{" "}
-                  ETH
+                  USDC
                 </div>
                 <div className="text-gray-600 dark:text-gray-400">
                   Goal:{" "}
                   <span className="font-semibold text-gray-900 dark:text-white">
-                    {formatETH(campaign.goalAmount)}
+                    {formatUSDC(campaign.goalAmount)}
                   </span>{" "}
-                  ETH
+                  USDC
                 </div>
               </div>
             </div>

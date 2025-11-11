@@ -29,8 +29,11 @@ export default function CampaignCard({
   const [isHovered, setIsHovered] = useState(false);
 
   // Format ETH values from wei
-  const formatETH = (wei: bigint) => {
-    return ethers.formatEther(wei);
+  // const formatETH = (wei: bigint) => {
+  //   return ethers.formatEther(wei);
+  // };
+  const formatUSDC = (amount: bigint) => {
+    return ethers.formatUnits(amount, 18); // USDC has 6 decimals
   };
 
   // Check if campaign is active
@@ -249,7 +252,7 @@ export default function CampaignCard({
               }`}
             >
               <div className="font-bold text-gray-900 dark:text-white text-sm">
-                {formatETH(campaign.totalDonated)}
+                {formatUSDC(campaign.totalDonated)}
               </div>
               <div className="text-gray-500 dark:text-gray-400">Raised</div>
             </div>
@@ -259,7 +262,7 @@ export default function CampaignCard({
               }`}
             >
               <div className="font-bold text-gray-900 dark:text-white text-sm">
-                {formatETH(campaign.goalAmount)}
+                {formatUSDC(campaign.goalAmount)}
               </div>
               <div className="text-gray-500 dark:text-gray-400">Goal</div>
             </div>

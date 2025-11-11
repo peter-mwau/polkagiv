@@ -161,8 +161,8 @@ export function useContract() {
 
   // Donate to a campaign
   const donateToCampaign = async (
-    campaignId: number, 
     tokenAddress: string, 
+    campaignId: number, 
     amount: string
   ) => {
     if (!isConnected || !address) {
