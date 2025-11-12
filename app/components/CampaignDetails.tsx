@@ -134,6 +134,7 @@ export default function CampaignDetails({
           <div className="flex space-x-1">
             {[
               { key: "overview", label: "Overview", icon: "📊" },
+              { key: "portfolio", label: "Portfolio", icon: "💼" },
               { key: "analytics", label: "Analytics", icon: "📈" },
               { key: "donations", label: "Donations", icon: "💝" },
             ].map(({ key, label, icon }) => (
@@ -521,6 +522,336 @@ export default function CampaignDetails({
                 )}
               </>
             )}
+          </div>
+        )}
+
+        {activeTab === "portfolio" && (
+          <div className="space-y-6">
+            {/* Portfolio Header */}
+            <div className="flex justify-between items-center">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                Campaign Portfolio
+              </h3>
+              <div className="text-sm text-gray-600 dark:text-gray-400">
+                Asset Distribution
+              </div>
+            </div>
+
+            {/* Portfolio Overview Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 text-white">
+                <div className="text-2xl font-bold">
+                  {ethers.formatUnits(campaign.totalDonated, 18)}
+                </div>
+                <div className="text-blue-100 text-sm">Total Value</div>
+                <div className="text-blue-200 text-xs mt-1">USDC</div>
+              </div>
+
+              <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-6 text-white">
+                <div className="text-2xl font-bold">
+                  {(
+                    (Number(campaign.totalDonated) /
+                      Number(campaign.goalAmount)) *
+                    100
+                  ).toFixed(1)}
+                  %
+                </div>
+                <div className="text-green-100 text-sm">Funded</div>
+                <div className="text-green-200 text-xs mt-1">of target</div>
+              </div>
+
+              <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-6 text-white">
+                <div className="text-2xl font-bold">
+                  {campaignDonations?.length || 0}
+                </div>
+                <div className="text-purple-100 text-sm">Contributions</div>
+                <div className="text-purple-200 text-xs mt-1">
+                  total donations
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-6 text-white">
+                <div className="text-2xl font-bold">{daysLeft}</div>
+                <div className="text-orange-100 text-sm">Days Left</div>
+                <div className="text-orange-200 text-xs mt-1">
+                  to reach goal
+                </div>
+              </div>
+            </div>
+
+            {/* Asset Distribution */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Pie Chart Section */}
+              <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700">
+                <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                  Asset Distribution
+                </h4>
+
+                {/* Pie Chart Visualization */}
+                <div className="relative w-48 h-48 mx-auto mb-6">
+                  <div className="absolute inset-0 rounded-full border-8 border-blue-500"></div>
+                  <div className="absolute inset-0 rounded-full border-8 border-green-500 transform -rotate-45"></div>
+                  <div className="absolute inset-0 rounded-full border-8 border-purple-500 transform -rotate-90"></div>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                        100%
+                      </div>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">
+                        USDC
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Asset Legend */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-4 h-4 bg-blue-500 rounded-full"></div>
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">
+                        USDC
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      {ethers.formatUnits(campaign.totalDonated, 18)} (100%)
+                    </div>
+                  </div>
+
+                  {/* Placeholder for future tokens */}
+                  <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg opacity-60">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-4 h-4 bg-gray-400 rounded-full"></div>
+                      <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                        Other Assets
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-400 dark:text-gray-500">
+                      0 (0%)
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Funding Progress & Timeline */}
+              <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700">
+                <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                  Funding Timeline
+                </h4>
+
+                {/* Progress Bar */}
+                <div className="mb-6">
+                  <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
+                    <span>Progress</span>
+                    <span>
+                      {(
+                        (Number(campaign.totalDonated) /
+                          Number(campaign.goalAmount)) *
+                        100
+                      ).toFixed(1)}
+                      %
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                    <div
+                      className="bg-gradient-to-r from-green-400 to-blue-500 h-3 rounded-full transition-all duration-1000"
+                      style={{
+                        width: `${Math.min(
+                          (Number(campaign.totalDonated) /
+                            Number(campaign.goalAmount)) *
+                            100,
+                          100
+                        )}%`,
+                      }}
+                    ></div>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-2">
+                    <span>0 USDC</span>
+                    <span>
+                      {ethers.formatUnits(campaign.goalAmount, 18)} USDC
+                    </span>
+                  </div>
+                </div>
+
+                {/* Timeline */}
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-gray-900 dark:text-white">
+                        Campaign Created
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {new Date(
+                          Number(campaign.createdAt) * 1000
+                        ).toLocaleDateString()}
+                      </div>
+                    </div>
+                  </div>
+
+                  {campaignDonations && campaignDonations.length > 0 && (
+                    <div className="flex items-center space-x-3">
+                      <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-gray-900 dark:text-white">
+                          First Contribution
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          {new Date(
+                            Number(campaignDonations[0].timestamp) * 1000
+                          ).toLocaleDateString()}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center space-x-3">
+                    <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-gray-900 dark:text-white">
+                        Funding Deadline
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {new Date(
+                          Number(campaign.deadline) * 1000
+                        ).toLocaleDateString()}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Contribution Patterns */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700">
+              <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                Contribution Patterns
+              </h4>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                    {campaignDonations?.length > 0
+                      ? ethers.formatUnits(
+                          campaign.totalDonated /
+                            BigInt(campaignDonations.length),
+                          18
+                        )
+                      : "0"}
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    Average Donation
+                  </div>
+                </div>
+
+                <div className="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                    {campaignDonations?.reduce(
+                      (max, donation) =>
+                        Number(donation.amount) > max
+                          ? Number(donation.amount)
+                          : max,
+                      0
+                    ) > 0
+                      ? ethers.formatUnits(
+                          BigInt(
+                            campaignDonations.reduce(
+                              (max, donation) =>
+                                Number(donation.amount) > max
+                                  ? Number(donation.amount)
+                                  : max,
+                              0
+                            )
+                          ),
+                          18
+                        )
+                      : "0"}
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    Largest Donation
+                  </div>
+                </div>
+
+                <div className="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                    {Math.ceil(
+                      (Date.now() - Number(campaign.createdAt) * 1000) /
+                        (1000 * 60 * 60 * 24)
+                    )}
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    Days Running
+                  </div>
+                </div>
+              </div>
+
+              {/* Daily Funding Rate */}
+              <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-medium text-blue-800 dark:text-blue-300">
+                      Daily Funding Rate
+                    </div>
+                    <div className="text-xs text-blue-600 dark:text-blue-400">
+                      {campaignDonations?.length > 0
+                        ? ethers.formatUnits(
+                            campaign.totalDonated /
+                              BigInt(
+                                Math.ceil(
+                                  (Date.now() -
+                                    Number(campaign.createdAt) * 1000) /
+                                    (1000 * 60 * 60 * 24)
+                                )
+                              ),
+                            18
+                          )
+                        : "0"}{" "}
+                      USDC/day
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-medium text-blue-800 dark:text-blue-300">
+                      {daysLeft > 0 ? "On Track" : "Completed"}
+                    </div>
+                    <div className="text-xs text-blue-600 dark:text-blue-400">
+                      {daysLeft > 0
+                        ? `${daysLeft} days remaining`
+                        : "Goal period ended"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Future Multi-Asset Support Notice */}
+            <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-2xl p-6 border border-yellow-200 dark:border-yellow-800">
+              <div className="flex items-start space-x-4">
+                <div className="w-8 h-8 bg-yellow-100 dark:bg-yellow-800 rounded-full flex items-center justify-center flex-shrink-0">
+                  <svg
+                    className="w-4 h-4 text-yellow-600 dark:text-yellow-400"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="text-lg font-semibold text-yellow-800 dark:text-yellow-300 mb-2">
+                    Multi-Asset Support Coming Soon
+                  </h4>
+                  <p className="text-yellow-700 dark:text-yellow-400 text-sm">
+                    Currently, this campaign only accepts USDC. In the future,
+                    you'll be able to contribute with multiple tokens like ETH,
+                    WBTC, and other ERC-20 tokens, providing a diversified
+                    portfolio for each campaign.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
