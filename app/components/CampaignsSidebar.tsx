@@ -48,7 +48,7 @@ export default function CampaignsSidebar({
   });
 
   const formatUSDC = (amount: bigint) => {
-    return ethers.formatUnits(amount, 18); // USDC has 6 decimals
+    return ethers.formatUnits(amount, 6); // USDC has 6 decimals
   };
 
   const getStatusColor = (campaign: Campaign) => {
@@ -220,11 +220,18 @@ export default function CampaignsSidebar({
                 <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
                   <span>Progress</span>
                   <span>
-                    {(
-                      (Number(campaign.totalDonated) /
-                        Number(campaign.goalAmount)) *
-                      100
-                    ).toFixed(1)}
+                    {typeof (campaign as unknown as { progress?: number })
+                      .progress === "number"
+                      ? Math.min(
+                          (campaign as unknown as { progress?: number })
+                            .progress!,
+                          100
+                        ).toFixed(1)
+                      : (
+                          (Number(campaign.totalDonated) /
+                            Number(campaign.goalAmount)) *
+                          100
+                        ).toFixed(1)}
                     %
                   </span>
                 </div>
@@ -247,14 +254,25 @@ export default function CampaignsSidebar({
               <div className="flex justify-between text-xs">
                 <div className="text-gray-600 dark:text-gray-400">
                   <span className="font-semibold text-gray-900 dark:text-white">
-                    {formatUSDC(campaign.totalDonated)}
+                    {typeof (campaign as unknown as { raisedUSD?: number })
+                      .raisedUSD === "number"
+                      ? Number(
+                          (campaign as unknown as { raisedUSD?: number })
+                            .raisedUSD
+                        ).toFixed(2)
+                      : formatUSDC(campaign.totalDonated)}
                   </span>{" "}
                   USDC
                 </div>
                 <div className="text-gray-600 dark:text-gray-400">
                   Goal:{" "}
                   <span className="font-semibold text-gray-900 dark:text-white">
-                    {formatUSDC(campaign.goalAmount)}
+                    {typeof (campaign as unknown as { goalUSD?: number })
+                      .goalUSD === "number"
+                      ? Number(
+                          (campaign as unknown as { goalUSD?: number }).goalUSD
+                        ).toFixed(2)
+                      : formatUSDC(campaign.goalAmount)}
                   </span>{" "}
                   USDC
                 </div>

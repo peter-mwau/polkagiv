@@ -6,9 +6,11 @@ import React, {
   useContext,
   useEffect,
   useState,
+  useCallback,
   ReactNode,
 } from "react";
 import { useContract } from "../hooks/useContract";
+import { useTokenConversion } from "../hooks/useTokenConversion";
 
 // Updated Campaign interface based on your actual data structure
 export interface Campaign {
@@ -43,7 +45,8 @@ interface CampaignsProviderProps {
 }
 
 export function CampaignsProvider({ children }: CampaignsProviderProps) {
-  const { getAllCampaigns } = useContract();
+  const { getAllCampaigns, getCampaignTokenBalances } = useContract();
+  const { calculatePortfolioValue } = useTokenConversion();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +70,7 @@ export function CampaignsProvider({ children }: CampaignsProviderProps) {
     };
   };
 
-  const fetchCampaigns = async () => {
+  const fetchCampaigns = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -80,18 +83,61 @@ export function CampaignsProvider({ children }: CampaignsProviderProps) {
       }
 
       // Transform each raw campaign array into a proper Campaign object
-      const processedCampaigns = rawCampaigns.map(transformCampaign);
+      const processedCampaigns = (rawCampaigns as any[]).map(transformCampaign);
 
-      console.log("Processed campaigns:", processedCampaigns); // For debugging
+      // For each campaign compute USDC-equivalent portfolio (goalUSD, raisedUSD, progress)
+      const enrichedCampaigns = await Promise.all(
+        processedCampaigns.map(async (c) => {
+          try {
+            const portfolio = await calculatePortfolioValue(
+              c.id,
+              c.goalAmount.toString(),
+              getCampaignTokenBalances
+            );
 
-      setCampaigns(processedCampaigns);
-    } catch (err: any) {
+            return {
+              ...c,
+              goalUSD: portfolio.goalUSD,
+              raisedUSD: portfolio.raisedUSD,
+              progress: portfolio.progress,
+              tokenBalances: portfolio.tokenBalances,
+            } as Campaign & {
+              goalUSD?: number;
+              raisedUSD?: number;
+              progress?: number;
+              tokenBalances?: any[];
+            };
+          } catch (error: unknown) {
+            // If portfolio calculation fails, return original campaign
+            console.error(
+              "Portfolio enrichment failed for campaign",
+              c.id,
+              error
+            );
+            return c;
+          }
+        })
+      );
+
+      console.log("Processed campaigns:", enrichedCampaigns); // For debugging
+
+      setCampaigns(enrichedCampaigns as Campaign[]);
+    } catch (err: unknown) {
       console.error("Error fetching campaigns:", err);
-      setError(err.message || "Failed to load campaigns");
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg || "Failed to load campaigns");
     } finally {
       setLoading(false);
     }
-  };
+    // Intentionally only depend on calculatePortfolioValue here. getAllCampaigns and
+    // getCampaignTokenBalances come from `useContract` and may change identity
+    // across renders which would cause this effect to refetch repeatedly. The
+    // functions themselves are stable in practice; if you change the contract
+    // implementation to memoize those functions, you can add them back to the
+    // dependency list. For now we disable the exhaustive-deps rule for those
+    // two values to avoid an infinite refetch loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calculatePortfolioValue]);
 
   const getCampaignById = (id: number): Campaign | undefined => {
     return campaigns.find((campaign) => campaign.id === id);

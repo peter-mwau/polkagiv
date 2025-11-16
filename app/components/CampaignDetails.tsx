@@ -7,6 +7,11 @@ import { useAccount } from "wagmi";
 import { toast } from "react-toastify";
 import DonationModal from "./DonationModal";
 import { useContract } from "../hooks/useContract";
+import {
+  CampaignPortfolio,
+  useTokenConversion,
+} from "../hooks/useTokenConversion";
+import PieChart from "./PieChart";
 
 interface CampaignDetailsProps {
   campaign: Campaign;
@@ -19,12 +24,16 @@ export default function CampaignDetails({
 }: CampaignDetailsProps) {
   const { isConnected } = useAccount();
   const [activeTab, setActiveTab] = useState<
-    "overview" | "analytics" | "donations"
+    "overview" | "portfolio" | "analytics" | "donations"
   >("overview");
   const [showDonationModal, setShowDonationModal] = useState(false);
   const [campaignDonations, setCampaignDonations] = useState<any[]>([]);
   const [isLoadingDonations, setIsLoadingDonations] = useState(false);
   const { getCampaignDonations } = useContract();
+  const [portfolio, setPortfolio] = useState<CampaignPortfolio | null>(null);
+  const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(false);
+  const { calculatePortfolioValue } = useTokenConversion();
+  const { getCampaignTokenBalances } = useContract();
 
   useEffect(() => {
     const fetchDonations = async () => {
@@ -45,6 +54,30 @@ export default function CampaignDetails({
     fetchDonations();
   }, [activeTab, campaign.id]);
 
+  // Load portfolio when portfolio tab is active
+  useEffect(() => {
+    const loadPortfolio = async () => {
+      if (activeTab === "portfolio") {
+        setIsLoadingPortfolio(true);
+        try {
+          const portfolioData = await calculatePortfolioValue(
+            campaign.id,
+            campaign.goalAmount.toString(),
+            getCampaignTokenBalances
+          );
+          setPortfolio(portfolioData);
+        } catch (error) {
+          console.error("Error loading portfolio:", error);
+          toast.error("Failed to load portfolio data");
+        } finally {
+          setIsLoadingPortfolio(false);
+        }
+      }
+    };
+
+    loadPortfolio();
+  }, [activeTab, campaign.id, campaign.goalAmount]);
+
   const formatDate = (timestamp: bigint) => {
     return new Date(Number(timestamp) * 1000).toLocaleDateString("en-US", {
       year: "numeric",
@@ -56,7 +89,9 @@ export default function CampaignDetails({
   };
 
   const progress =
-    campaign.totalDonated > 0n
+    typeof (campaign as unknown as { progress?: number }).progress === "number"
+      ? Math.min((campaign as unknown as { progress?: number }).progress!, 100)
+      : campaign.totalDonated > 0n
       ? Math.min(
           (Number(campaign.totalDonated) / Number(campaign.goalAmount)) * 100,
           100
@@ -71,7 +106,95 @@ export default function CampaignDetails({
   );
   const isActive = campaign.active && !campaign.cancelled && !campaign.funded;
   const isExpired = Date.now() > Number(campaign.deadline) * 1000;
-  const isSuccessful = campaign.totalDonated >= campaign.goalAmount;
+
+  // Simple SVG donut (pie) renderer for portfolio distribution.
+  const PieDonut = ({
+    items,
+    size = 160,
+    thickness = 28,
+  }: {
+    items: { label: string; value: number; color: string }[];
+    size?: number;
+    thickness?: number;
+  }) => {
+    const cx = size / 2;
+    const cy = size / 2;
+    const outerR = size / 2;
+    const innerR = outerR - thickness;
+    const total = items.reduce((s, it) => s + Math.max(0, it.value), 0) || 1;
+
+    let cumulative = 0;
+
+    const polar = (angleDeg: number) => {
+      const rad = (angleDeg - 90) * (Math.PI / 180);
+      return {
+        x: cx + outerR * Math.cos(rad),
+        y: cy + outerR * Math.sin(rad),
+      };
+    };
+
+    const polarInner = (angleDeg: number) => {
+      const rad = (angleDeg - 90) * (Math.PI / 180);
+      return {
+        x: cx + innerR * Math.cos(rad),
+        y: cy + innerR * Math.sin(rad),
+      };
+    };
+
+    const describeSegment = (startPct: number, endPct: number) => {
+      const startAngle = startPct * 360;
+      const endAngle = endPct * 360;
+      const largeArc = endAngle - startAngle <= 180 ? 0 : 1;
+
+      const oStart = polar(startAngle);
+      const oEnd = polar(endAngle);
+      const iStart = polarInner(startAngle);
+      const iEnd = polarInner(endAngle);
+
+      return `M ${oStart.x} ${oStart.y} A ${outerR} ${outerR} 0 ${largeArc} 1 ${oEnd.x} ${oEnd.y} L ${iEnd.x} ${iEnd.y} A ${innerR} ${innerR} 0 ${largeArc} 0 ${iStart.x} ${iStart.y} Z`;
+    };
+
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <defs>
+          <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="1" stdDeviation="2" floodOpacity="0.06" />
+          </filter>
+        </defs>
+        <g filter="url(#shadow)">
+          {items.map((it, idx) => {
+            const start = cumulative / total;
+            cumulative += it.value;
+            const end = cumulative / total;
+            // avoid drawing extremely tiny segments zero-length
+            if (end - start <= 0) return null;
+            return (
+              <path
+                key={idx}
+                d={describeSegment(start, end)}
+                fill={it.color}
+                stroke="rgba(255,255,255,0.06)"
+                strokeWidth={0.5}
+              />
+            );
+          })}
+        </g>
+        {/* center label */}
+        <text
+          x={cx}
+          y={cy}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          className="text-sm"
+          style={{ fontSize: 12, fill: "#111827" }}
+        >
+          {Math.round((items.reduce((s, it) => s + it.value, 0) / total) * 100)}
+          %
+        </text>
+      </svg>
+    );
+  };
+  // const isSuccessful = campaign.totalDonated >= campaign.goalAmount; // unused
 
   // Recent donations within the last 24 hours (newest first)
   const recentDonations = [...campaignDonations]
@@ -80,6 +203,32 @@ export default function CampaignDetails({
       (d) => Number(d.timestamp) * 1000 >= Date.now() - 24 * 60 * 60 * 1000
     )
     .slice(0, 5);
+
+  // Precompute pie data for the main Asset Holdings pie chart.
+  const pieData = portfolio
+    ? portfolio.tokenBalances.map((token, index) => {
+        const percentage =
+          portfolio.totalUSDValue > 0
+            ? (token.usdValue / portfolio.totalUSDValue) * 100
+            : 0;
+
+        const colors = [
+          "#3B82F6", // blue-500
+          "#10B981", // green-500
+          "#8B5CF6", // purple-500
+          "#F59E0B", // amber-500
+          "#EF4444", // red-500
+          "#06B6D4", // cyan-500
+        ];
+
+        return {
+          symbol: token.symbol,
+          value: token.usdValue,
+          color: colors[index % colors.length],
+          percentage,
+        };
+      })
+    : [];
 
   return (
     <div className="h-[85vh] overflow-y-auto bg-white dark:bg-gray-900 rounded-2xl">
@@ -140,7 +289,11 @@ export default function CampaignDetails({
             ].map(({ key, label, icon }) => (
               <button
                 key={key}
-                onClick={() => setActiveTab(key as any)}
+                onClick={() =>
+                  setActiveTab(
+                    key as "overview" | "portfolio" | "analytics" | "donations"
+                  )
+                }
                 className={`flex items-center space-x-2 px-4 py-3 rounded-t-lg font-medium transition-all duration-200 ${
                   activeTab === key
                     ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-b-2 border-blue-500"
@@ -192,7 +345,14 @@ export default function CampaignDetails({
               <div className="grid grid-cols-2 gap-4 text-center">
                 <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-4 backdrop-blur-sm">
                   <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {ethers.formatUnits(campaign.totalDonated, 18)} USDC
+                    {typeof (campaign as unknown as { raisedUSD?: number })
+                      .raisedUSD === "number"
+                      ? Number(
+                          (campaign as unknown as { raisedUSD?: number })
+                            .raisedUSD
+                        ).toFixed(2)
+                      : ethers.formatUnits(campaign.totalDonated, 6)}{" "}
+                    USDC
                   </div>
                   <div className="text-sm text-gray-600 dark:text-gray-400">
                     Raised
@@ -200,7 +360,13 @@ export default function CampaignDetails({
                 </div>
                 <div className="bg-white/50 dark:bg-gray-800/50 rounded-lg p-4 backdrop-blur-sm">
                   <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {ethers.formatUnits(campaign.goalAmount, 18)} USDC
+                    {typeof (campaign as unknown as { goalUSD?: number })
+                      .goalUSD === "number"
+                      ? Number(
+                          (campaign as unknown as { goalUSD?: number }).goalUSD
+                        ).toFixed(2)
+                      : ethers.formatUnits(campaign.goalAmount, 6)}{" "}
+                    USDC
                   </div>
                   <div className="text-sm text-gray-600 dark:text-gray-400">
                     Goal
@@ -359,7 +525,7 @@ export default function CampaignDetails({
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
                     <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                      {ethers.formatUnits(campaign.totalDonated, 18)}
+                      {ethers.formatUnits(campaign.totalDonated, 6)}
                     </div>
                     <div className="text-sm text-blue-700 dark:text-blue-300">
                       Total Raised
@@ -380,7 +546,7 @@ export default function CampaignDetails({
                             ethers.formatUnits(
                               campaign.totalDonated /
                                 BigInt(campaignDonations.length),
-                              18
+                              6
                             )
                           ).toFixed(2)
                         : "0.00"}
@@ -434,8 +600,7 @@ export default function CampaignDetails({
 
                               <div className="text-right">
                                 <div className="text-lg font-bold text-green-600 dark:text-green-400">
-                                  +{ethers.formatUnits(donation.amount, 18)}{" "}
-                                  USDC
+                                  +{ethers.formatUnits(donation.amount, 6)} USDC
                                 </div>
                                 <div className="text-xs text-gray-500 dark:text-gray-400">
                                   Donation #{index + 1}
@@ -507,7 +672,7 @@ export default function CampaignDetails({
                               {donation.donor.slice(-4)}
                             </span>
                             <span className="text-sm text-green-600 dark:text-green-400 ml-2">
-                              {ethers.formatUnits(donation.amount, 18)} USDC
+                              {ethers.formatUnits(donation.amount, 6)} USDC
                             </span>
                           </div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">
@@ -533,325 +698,438 @@ export default function CampaignDetails({
                 Campaign Portfolio
               </h3>
               <div className="text-sm text-gray-600 dark:text-gray-400">
-                Asset Distribution
+                Multi-Asset Distribution
               </div>
             </div>
 
-            {/* Portfolio Overview Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 text-white">
-                <div className="text-2xl font-bold">
-                  {ethers.formatUnits(campaign.totalDonated, 18)}
-                </div>
-                <div className="text-blue-100 text-sm">Total Value</div>
-                <div className="text-blue-200 text-xs mt-1">USDC</div>
+            {isLoadingPortfolio ? (
+              <div className="flex justify-center items-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                <span className="ml-2 text-gray-600 dark:text-gray-400">
+                  Loading portfolio...
+                </span>
               </div>
+            ) : portfolio ? (
+              <>
+                {/* Portfolio Overview Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 text-white">
+                    <div className="text-2xl font-bold">
+                      ${portfolio.totalUSDValue.toFixed(2)}
+                    </div>
+                    <div className="text-blue-100 text-sm">Total Value</div>
+                    <div className="text-blue-200 text-xs mt-1">
+                      USD Equivalent
+                    </div>
+                  </div>
 
-              <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-6 text-white">
-                <div className="text-2xl font-bold">
-                  {(
-                    (Number(campaign.totalDonated) /
-                      Number(campaign.goalAmount)) *
-                    100
-                  ).toFixed(1)}
-                  %
-                </div>
-                <div className="text-green-100 text-sm">Funded</div>
-                <div className="text-green-200 text-xs mt-1">of target</div>
-              </div>
+                  <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-6 text-white">
+                    <div className="text-2xl font-bold">
+                      {portfolio.progress.toFixed(1)}%
+                    </div>
+                    <div className="text-green-100 text-sm">Funded</div>
+                    <div className="text-green-200 text-xs mt-1">of target</div>
+                  </div>
 
-              <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-6 text-white">
-                <div className="text-2xl font-bold">
-                  {campaignDonations?.length || 0}
-                </div>
-                <div className="text-purple-100 text-sm">Contributions</div>
-                <div className="text-purple-200 text-xs mt-1">
-                  total donations
-                </div>
-              </div>
+                  <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl p-6 text-white">
+                    <div className="text-2xl font-bold">
+                      {portfolio.tokenBalances.length}
+                    </div>
+                    <div className="text-purple-100 text-sm">Assets</div>
+                    <div className="text-purple-200 text-xs mt-1">
+                      different tokens
+                    </div>
+                  </div>
 
-              <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-6 text-white">
-                <div className="text-2xl font-bold">{daysLeft}</div>
-                <div className="text-orange-100 text-sm">Days Left</div>
-                <div className="text-orange-200 text-xs mt-1">
-                  to reach goal
-                </div>
-              </div>
-            </div>
-
-            {/* Asset Distribution */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Pie Chart Section */}
-              <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700">
-                <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                  Asset Distribution
-                </h4>
-
-                {/* Pie Chart Visualization */}
-                <div className="relative w-48 h-48 mx-auto mb-6">
-                  <div className="absolute inset-0 rounded-full border-8 border-blue-500"></div>
-                  <div className="absolute inset-0 rounded-full border-8 border-green-500 transform -rotate-45"></div>
-                  <div className="absolute inset-0 rounded-full border-8 border-purple-500 transform -rotate-90"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                        100%
-                      </div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">
-                        USDC
-                      </div>
+                  <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-6 text-white">
+                    <div className="text-2xl font-bold">{daysLeft}</div>
+                    <div className="text-orange-100 text-sm">Days Left</div>
+                    <div className="text-orange-200 text-xs mt-1">
+                      to reach goal
                     </div>
                   </div>
                 </div>
 
-                {/* Asset Legend */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-4 h-4 bg-blue-500 rounded-full"></div>
-                      <span className="text-sm font-medium text-gray-900 dark:text-white">
-                        USDC
-                      </span>
-                    </div>
-                    <div className="text-sm text-gray-600 dark:text-gray-400">
-                      {ethers.formatUnits(campaign.totalDonated, 18)} (100%)
-                    </div>
-                  </div>
+                {/* Asset Distribution - Show Actual Tokens with Pie Chart */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Pie Chart Visualization */}
+                  <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700">
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 text-center">
+                      Asset Distribution
+                    </h4>
 
-                  {/* Placeholder for future tokens */}
-                  <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg opacity-60">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-4 h-4 bg-gray-400 rounded-full"></div>
-                      <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                        Other Assets
-                      </span>
-                    </div>
-                    <div className="text-sm text-gray-400 dark:text-gray-500">
-                      0 (0%)
-                    </div>
-                  </div>
-                </div>
-              </div>
+                    {portfolio.tokenBalances.length > 0 ? (
+                      <div className="flex flex-col items-center">
+                        {/* Pie Chart */}
+                        <PieChart
+                          data={portfolio.tokenBalances.map((token, index) => {
+                            const percentage =
+                              portfolio.totalUSDValue > 0
+                                ? (token.usdValue / portfolio.totalUSDValue) *
+                                  100
+                                : 0;
 
-              {/* Funding Progress & Timeline */}
-              <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700">
-                <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                  Funding Timeline
-                </h4>
+                            const colors = [
+                              "#3B82F6", // blue-500
+                              "#10B981", // green-500
+                              "#8B5CF6", // purple-500
+                              "#F59E0B", // amber-500
+                              "#EF4444", // red-500
+                              "#06B6D4", // cyan-500
+                            ];
 
-                {/* Progress Bar */}
-                <div className="mb-6">
-                  <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
-                    <span>Progress</span>
-                    <span>
-                      {(
-                        (Number(campaign.totalDonated) /
-                          Number(campaign.goalAmount)) *
-                        100
-                      ).toFixed(1)}
-                      %
-                    </span>
-                  </div>
-                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
-                    <div
-                      className="bg-gradient-to-r from-green-400 to-blue-500 h-3 rounded-full transition-all duration-1000"
-                      style={{
-                        width: `${Math.min(
-                          (Number(campaign.totalDonated) /
-                            Number(campaign.goalAmount)) *
-                            100,
-                          100
-                        )}%`,
-                      }}
-                    ></div>
-                  </div>
-                  <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-2">
-                    <span>0 USDC</span>
-                    <span>
-                      {ethers.formatUnits(campaign.goalAmount, 18)} USDC
-                    </span>
-                  </div>
-                </div>
+                            return {
+                              symbol: token.symbol,
+                              value: token.usdValue,
+                              color: colors[index % colors.length],
+                              percentage,
+                            };
+                          })}
+                          size={200}
+                        />
 
-                {/* Timeline */}
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-gray-900 dark:text-white">
-                        Campaign Created
-                      </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                        {new Date(
-                          Number(campaign.createdAt) * 1000
-                        ).toLocaleDateString()}
-                      </div>
-                    </div>
-                  </div>
+                        {/* Legend */}
+                        <div className="mt-6 space-y-3 w-full max-w-xs">
+                          {portfolio.tokenBalances.map((token, index) => {
+                            const percentage =
+                              portfolio.totalUSDValue > 0
+                                ? (token.usdValue / portfolio.totalUSDValue) *
+                                  100
+                                : 0;
 
-                  {campaignDonations && campaignDonations.length > 0 && (
-                    <div className="flex items-center space-x-3">
-                      <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                      <div className="flex-1">
-                        <div className="text-sm font-medium text-gray-900 dark:text-white">
-                          First Contribution
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                          {new Date(
-                            Number(campaignDonations[0].timestamp) * 1000
-                          ).toLocaleDateString()}
+                            const colors = [
+                              "bg-blue-500",
+                              "bg-green-500",
+                              "bg-purple-500",
+                              "bg-amber-500",
+                              "bg-red-500",
+                              "bg-cyan-500",
+                            ];
+
+                            return (
+                              <div
+                                key={token.tokenAddress}
+                                className="flex items-center justify-between"
+                              >
+                                <div className="flex items-center space-x-3 flex-1">
+                                  <div
+                                    className={`w-3 h-3 rounded-full ${
+                                      colors[index % colors.length]
+                                    }`}
+                                  ></div>
+                                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                                    {token.symbol}
+                                  </span>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                                    {percentage.toFixed(1)}%
+                                  </div>
+                                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                                    ${token.usdValue.toFixed(2)}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
-                    </div>
-                  )}
-
-                  <div className="flex items-center space-x-3">
-                    <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-gray-900 dark:text-white">
-                        Funding Deadline
+                    ) : (
+                      <div className="text-center py-8">
+                        <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <svg
+                            className="w-8 h-8 text-gray-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                        </div>
+                        <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                          No Assets Yet
+                        </h4>
+                        <p className="text-gray-600 dark:text-gray-400 text-sm">
+                          This campaign hasn&apos;t received any donations yet.
+                        </p>
                       </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                        {new Date(
-                          Number(campaign.deadline) * 1000
-                        ).toLocaleDateString()}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Contribution Patterns */}
-            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700">
-              <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                Contribution Patterns
-              </h4>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {campaignDonations?.length > 0
-                      ? ethers.formatUnits(
-                          campaign.totalDonated /
-                            BigInt(campaignDonations.length),
-                          18
-                        )
-                      : "0"}
-                  </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">
-                    Average Donation
-                  </div>
-                </div>
-
-                <div className="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {campaignDonations?.reduce(
-                      (max, donation) =>
-                        Number(donation.amount) > max
-                          ? Number(donation.amount)
-                          : max,
-                      0
-                    ) > 0
-                      ? ethers.formatUnits(
-                          BigInt(
-                            campaignDonations.reduce(
-                              (max, donation) =>
-                                Number(donation.amount) > max
-                                  ? Number(donation.amount)
-                                  : max,
-                              0
-                            )
-                          ),
-                          18
-                        )
-                      : "0"}
-                  </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">
-                    Largest Donation
-                  </div>
-                </div>
-
-                <div className="text-center p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {Math.ceil(
-                      (Date.now() - Number(campaign.createdAt) * 1000) /
-                        (1000 * 60 * 60 * 24)
                     )}
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">
-                    Days Running
-                  </div>
-                </div>
-              </div>
 
-              {/* Daily Funding Rate */}
-              <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-medium text-blue-800 dark:text-blue-300">
-                      Daily Funding Rate
-                    </div>
-                    <div className="text-xs text-blue-600 dark:text-blue-400">
-                      {campaignDonations?.length > 0
-                        ? ethers.formatUnits(
-                            campaign.totalDonated /
-                              BigInt(
-                                Math.ceil(
-                                  (Date.now() -
-                                    Number(campaign.createdAt) * 1000) /
-                                    (1000 * 60 * 60 * 24)
-                                )
-                              ),
-                            18
-                          )
-                        : "0"}{" "}
-                      USDC/day
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm font-medium text-blue-800 dark:text-blue-300">
-                      {daysLeft > 0 ? "On Track" : "Completed"}
-                    </div>
-                    <div className="text-xs text-blue-600 dark:text-blue-400">
-                      {daysLeft > 0
-                        ? `${daysLeft} days remaining`
-                        : "Goal period ended"}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+                  {/* Asset Holdings - ACTUAL TOKENS */}
+                  <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700 lg:col-span-2">
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                      Asset Holdings
+                    </h4>
 
-            {/* Future Multi-Asset Support Notice */}
-            <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-2xl p-6 border border-yellow-200 dark:border-yellow-800">
-              <div className="flex items-start space-x-4">
-                <div className="w-8 h-8 bg-yellow-100 dark:bg-yellow-800 rounded-full flex items-center justify-center flex-shrink-0">
-                  <svg
-                    className="w-4 h-4 text-yellow-600 dark:text-yellow-400"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
+                    {portfolio.tokenBalances.length > 0 ? (
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* Pie chart on the left */}
+                        <div className="flex items-center justify-center">
+                          <PieChart data={pieData} size={220} />
+                        </div>
+
+                        {/* Token list on the right (spans two columns on large screens) */}
+                        <div className="lg:col-span-2 space-y-4">
+                          {portfolio.tokenBalances.map((token, index) => {
+                            const percentage =
+                              portfolio.totalUSDValue > 0
+                                ? (token.usdValue / portfolio.totalUSDValue) *
+                                  100
+                                : 0;
+
+                            const colors = [
+                              "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20",
+                              "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20",
+                              "border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-900/20",
+                              "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20",
+                            ];
+
+                            return (
+                              <div
+                                key={token.tokenAddress}
+                                className={`p-4 rounded-lg border-2 ${
+                                  colors[index % colors.length]
+                                } transition-all duration-200 hover:scale-[1.02]`}
+                              >
+                                <div className="flex items-center justify-between mb-3">
+                                  <div className="flex items-center space-x-3">
+                                    <div
+                                      className={`w-3 h-3 rounded-full ${
+                                        token.symbol === "USDC"
+                                          ? "bg-blue-500"
+                                          : token.symbol === "WETH"
+                                          ? "bg-green-500"
+                                          : token.symbol === "WBTC"
+                                          ? "bg-amber-500"
+                                          : "bg-purple-500"
+                                      }`}
+                                    ></div>
+                                    <div>
+                                      <div className="font-semibold text-lg text-gray-900 dark:text-white">
+                                        {token.symbol}
+                                      </div>
+                                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                                        {token.tokenAddress.slice(0, 8)}...
+                                        {token.tokenAddress.slice(-6)}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                                      {percentage.toFixed(1)}%
+                                    </div>
+                                    <div className="text-xs text-gray-600 dark:text-gray-400">
+                                      of portfolio
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4 mb-3">
+                                  <div>
+                                    <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                                      {parseFloat(
+                                        token.balanceFormatted
+                                      ).toFixed(6)}
+                                    </div>
+                                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                                      {token.symbol} Balance
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="text-lg font-semibold text-green-600 dark:text-green-400">
+                                      ${token.usdValue.toFixed(2)}
+                                    </div>
+                                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                                      USD Value
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Progress bar showing portfolio share */}
+                                <div className="mt-2">
+                                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                                    <div
+                                      className={`h-2 rounded-full ${
+                                        token.symbol === "USDC"
+                                          ? "bg-blue-500"
+                                          : token.symbol === "WETH"
+                                          ? "bg-green-500"
+                                          : token.symbol === "WBTC"
+                                          ? "bg-amber-500"
+                                          : "bg-purple-500"
+                                      } transition-all duration-1000`}
+                                      style={{
+                                        width: `${Math.min(percentage, 100)}%`,
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Token Details */}
+                                <div className="mt-3 pt-3 border-t border-gray-300 dark:border-gray-600">
+                                  <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                      <div className="text-gray-600 dark:text-gray-400">
+                                        USDC Equivalent:
+                                      </div>
+                                      <div className="font-mono text-gray-900 dark:text-white">
+                                        {token.usdValue.toFixed(6)} USDC
+                                      </div>
+                                    </div>
+                                    <div className="text-right">
+                                      <div className="text-gray-600 dark:text-gray-400">
+                                        Daily Change:
+                                      </div>
+                                      <div className="font-mono text-green-500">
+                                        +0.00%
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8">
+                        <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <svg
+                            className="w-8 h-8 text-gray-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                        </div>
+                        <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                          No Assets Yet
+                        </h4>
+                        <p className="text-gray-600 dark:text-gray-400">
+                          This campaign hasn&apos;t received any donations yet.
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-lg font-semibold text-yellow-800 dark:text-yellow-300 mb-2">
-                    Multi-Asset Support Coming Soon
-                  </h4>
-                  <p className="text-yellow-700 dark:text-yellow-400 text-sm">
-                    Currently, this campaign only accepts USDC. In the future,
-                    you'll be able to contribute with multiple tokens like ETH,
-                    WBTC, and other ERC-20 tokens, providing a diversified
-                    portfolio for each campaign.
-                  </p>
+
+                {/* Funding Progress & Summary */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Funding Progress */}
+                  <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700">
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                      Funding Progress (USD)
+                    </h4>
+                    <div className="mb-6">
+                      <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
+                        <span>Progress</span>
+                        <span>{portfolio.progress.toFixed(1)}%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                        <div
+                          className="bg-gradient-to-r from-green-400 to-blue-500 h-3 rounded-full transition-all duration-1000"
+                          style={{
+                            width: `${Math.min(portfolio.progress, 100)}%`,
+                          }}
+                        ></div>
+                      </div>
+                      <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-2">
+                        <span>$0</span>
+                        <span>${portfolio.goalUSD.toFixed(2)}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600 dark:text-gray-400">
+                          Raised:
+                        </span>
+                        <span className="font-semibold text-gray-900 dark:text-white">
+                          ${portfolio.raisedUSD.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600 dark:text-gray-400">
+                          Goal:
+                        </span>
+                        <span className="font-semibold text-gray-900 dark:text-white">
+                          ${portfolio.goalUSD.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600 dark:text-gray-400">
+                          Remaining:
+                        </span>
+                        <span className="font-semibold text-gray-900 dark:text-white">
+                          $
+                          {Math.max(
+                            0,
+                            portfolio.goalUSD - portfolio.raisedUSD
+                          ).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Portfolio Summary */}
+                  <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700">
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                      Portfolio Summary
+                    </h4>
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">
+                          Total Assets:
+                        </span>
+                        <span className="font-semibold text-gray-900 dark:text-white">
+                          {portfolio.tokenBalances.length}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">
+                          Total Value:
+                        </span>
+                        <span className="font-semibold text-gray-900 dark:text-white">
+                          ${portfolio.totalUSDValue.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">
+                          Funding Progress:
+                        </span>
+                        <span className="font-semibold text-gray-900 dark:text-white">
+                          {portfolio.progress.toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">
+                          Days Remaining:
+                        </span>
+                        <span className="font-semibold text-gray-900 dark:text-white">
+                          {daysLeft}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
+              </>
+            ) : (
+              <div className="text-center py-12 text-gray-600 dark:text-gray-400">
+                Unable to load portfolio data
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>

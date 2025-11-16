@@ -158,8 +158,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       throw new Error(
         "No EVM provider detected. Install MetaMask or set a valid NEXT_PUBLIC_PRIVATE_KEY."
       );
-    } catch (error: any) {
-      console.error("Connection error:", error);
+    } catch (error: unknown) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error("Connection error:", errMsg);
+      // rethrow the original error value
       throw error;
     } finally {
       setIsConnecting(false);

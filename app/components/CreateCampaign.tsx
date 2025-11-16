@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from "react";
 import { useAccount } from "wagmi";
 import { useContract } from "../hooks/useContract";
+import { TOKENS } from "../../config/tokens";
 
 export type CreateCampaignData = {
   name: string;
@@ -25,6 +26,9 @@ export default function CreateCampaign({ onCreate, initial, onClose }: Props) {
   const [name, setName] = useState(initial?.name || "");
   const [description, setDescription] = useState(initial?.description || "");
   const [goalAmount, setGoalAmount] = useState(initial?.goalAmount || "");
+  // Goals are denominated in USDC by default
+  const USDC_ADDRESS =
+    TOKENS.USDC.address || process.env.NEXT_PUBLIC_USDC_CONTRACT_ADDRESS || "";
   const [durationInDays, setDurationInDays] = useState<number>(
     initial?.durationInDays || 7
   );
@@ -77,7 +81,7 @@ export default function CreateCampaign({ onCreate, initial, onClose }: Props) {
       setSubmitting(true);
 
       // Use the contract hook to create campaign - toasts are handled inside the hook
-      const result = await createCampaign(payload);
+      const result = await createCampaign(payload, USDC_ADDRESS || undefined);
 
       console.log("Campaign created successfully:", result);
 
@@ -195,7 +199,7 @@ export default function CreateCampaign({ onCreate, initial, onClose }: Props) {
 
           <div>
             <label className="block text-sm font-medium text-gray-900 dark:text-white mb-2">
-              Goal Amount (ETH) *
+              Goal Amount (USDC) *
             </label>
             <div className="relative">
               <input
@@ -208,7 +212,7 @@ export default function CreateCampaign({ onCreate, initial, onClose }: Props) {
               />
               <div className="absolute inset-y-0 right-0 flex items-center pr-3">
                 <span className="text-gray-500 dark:text-gray-400 font-medium">
-                  ETH
+                  USDC
                 </span>
               </div>
             </div>

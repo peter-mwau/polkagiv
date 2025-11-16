@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { useContract } from "../hooks/useContract";
 import { useAccount } from "wagmi";
 import { toast } from "react-toastify";
+import { TOKENS, TOKENS_ARRAY } from "@/config/tokens";
 
 export default function Manage() {
   const { setTokenAllowed, hasRole } = useContract();
@@ -156,37 +157,17 @@ export default function Manage() {
                     Quick Add Test Tokens
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
-                    {[
-                      {
-                        name: "USDC (Test)",
-                        address: "0x8f552a71EFE5eeFc207Bf75485b356A0b3f01eC9",
-                        symbol: "USDC",
-                      },
-                      {
-                        name: "USDT (Test)",
-                        address: "0x8e70cD5B4Ff3f62659049e74b6649c6603A0E594",
-                        symbol: "USDT",
-                      },
-                      {
-                        name: "DAI (Test)",
-                        address: "0x4B0b4b2c56E4E56a6978c13cE44Eec5F8e56b6b9",
-                        symbol: "DAI",
-                      },
-                      {
-                        name: "WETH (Test)",
-                        address: "0x1436aE0dF0A8663F18c0Ec51d7e2E46591730715",
-                        symbol: "WETH",
-                      },
-                      {
-                        name: "DEV Token",
-                        address: "0x0000000000000000000000000000000000000802",
-                        symbol: "DEV",
-                      },
-                    ].map((token) => (
+                    {TOKENS_ARRAY.map((token) => (
                       <button
-                        key={token.address}
+                        key={token.symbol}
                         type="button"
                         onClick={() => {
+                          if (!token.address) {
+                            toast.error(
+                              `${token.symbol} has no configured address`
+                            );
+                            return;
+                          }
                           setTokenAddress(token.address);
                           setAllowed(true);
                           toast.info(`Added ${token.symbol} to form`);

@@ -33,7 +33,7 @@ export default function CampaignCard({
   //   return ethers.formatEther(wei);
   // };
   const formatUSDC = (amount: bigint) => {
-    return ethers.formatUnits(amount, 18); // USDC has 6 decimals
+    return ethers.formatUnits(amount, 6); // USDC has 6 decimals
   };
 
   // Check if campaign is active

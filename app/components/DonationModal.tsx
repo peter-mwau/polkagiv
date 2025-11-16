@@ -7,6 +7,7 @@ import { useContract } from "../hooks/useContract";
 import { useAccount } from "wagmi";
 import { ethers } from "ethers";
 import { toast } from "react-toastify";
+import { TOKENS_ARRAY, TokenInfo } from "../../config/tokens";
 
 interface DonationModalProps {
   campaign: Campaign;
@@ -28,32 +29,40 @@ export default function DonationModal({
   const [amount, setAmount] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [needsApproval, setNeedsApproval] = useState(false);
+  const supportedTokens = TOKENS_ARRAY.filter(
+    (t) => !!t.address
+  ) as TokenInfo[];
+  const defaultToken =
+    supportedTokens.find((t) => t.symbol === "USDC") || supportedTokens[0];
+  const [selectedToken, setSelectedToken] = useState<TokenInfo | undefined>(
+    defaultToken
+  );
 
   // Check if approval is needed
   const checkAllowance = async (): Promise<boolean> => {
     if (!address || !amount || parseFloat(amount) <= 0) return false;
 
     try {
-      // Get USDC contract instance
+      // Use the selected token for allowance checks
+      if (!selectedToken || !selectedToken.address) return false;
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
-      const usdcContract = new ethers.Contract(
-        USDC_ADDRESS,
+      const tokenContract = new ethers.Contract(
+        selectedToken.address,
         [
           "function allowance(address owner, address spender) view returns (uint256)",
           "function approve(address spender, uint256 amount) returns (bool)",
-          "function decimals() view returns (uint8)",
         ],
         signer
       );
 
       const donationContractAddress =
         process.env.NEXT_PUBLIC_DONOR_CONTRACT_ADDRESS;
-      const currentAllowance = await usdcContract.allowance(
+      const currentAllowance = await tokenContract.allowance(
         address,
         donationContractAddress
       );
-      const amountInWei = ethers.parseUnits(amount, 18); // Your USDC uses 18 decimals
+      const amountInWei = ethers.parseUnits(amount, selectedToken.decimals);
 
       return currentAllowance < amountInWei;
     } catch (error) {
@@ -69,19 +78,23 @@ export default function DonationModal({
     const toastId = toast.loading("Approving USDC tokens...");
 
     try {
+      if (!selectedToken || !selectedToken.address) {
+        throw new Error("No token selected for approval");
+      }
+
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
-      const usdcContract = new ethers.Contract(
-        USDC_ADDRESS,
+      const tokenContract = new ethers.Contract(
+        selectedToken.address,
         ["function approve(address spender, uint256 amount) returns (bool)"],
         signer
       );
 
-      const amountInWei = ethers.parseUnits(amount, 18);
+      const amountInWei = ethers.parseUnits(amount, selectedToken.decimals);
       const donationContractAddress =
         process.env.NEXT_PUBLIC_DONOR_CONTRACT_ADDRESS;
 
-      const tx = await usdcContract.approve(
+      const tx = await tokenContract.approve(
         donationContractAddress,
         amountInWei
       );
@@ -102,11 +115,12 @@ export default function DonationModal({
       });
 
       return true;
-    } catch (error: any) {
-      console.error("Approval error:", error);
+    } catch (error: unknown) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error("Approval error:", errMsg);
 
       let errorMessage = "Failed to approve tokens";
-      if (error.message?.includes("rejected")) {
+      if (errMsg.includes("rejected")) {
         errorMessage = "Approval was rejected";
       }
 
@@ -137,7 +151,7 @@ export default function DonationModal({
     setIsLoading(true);
 
     try {
-      // Check if approval is needed
+      // Check if approval is needed (for ERC20 tokens)
       const requiresApproval = await checkAllowance();
 
       if (requiresApproval) {
@@ -152,9 +166,9 @@ export default function DonationModal({
 
       // Now proceed with donation
       const toastId = toast.loading("Processing your donation...");
-      const amountInWei = ethers.parseUnits(amount, 18);
 
-      await donateToCampaign(USDC_ADDRESS, campaign.id, amount);
+      const tokenAddr = selectedToken?.address || USDC_ADDRESS;
+      await donateToCampaign(tokenAddr, campaign.id, amount);
 
       toast.update(toastId, {
         render: "Donation successful! Thank you for your support! 🎉",
@@ -166,15 +180,16 @@ export default function DonationModal({
       setAmount("");
       onDonationSuccess();
       onClose();
-    } catch (error: any) {
-      console.error("Donation error:", error);
+    } catch (error: unknown) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error("Donation error:", errMsg);
 
       let errorMessage = "Failed to process donation";
-      if (error.message?.includes("rejected")) {
+      if (errMsg.includes("rejected")) {
         errorMessage = "Transaction was rejected";
-      } else if (error.message?.includes("insufficient")) {
+      } else if (errMsg.includes("insufficient")) {
         errorMessage = "Insufficient balance";
-      } else if (error.message?.includes("allowance")) {
+      } else if (errMsg.includes("allowance")) {
         errorMessage = "Token approval needed. Please try again.";
         setNeedsApproval(true);
       }
@@ -294,10 +309,10 @@ export default function DonationModal({
                 </div>
                 <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300 mt-2">
                   <span>
-                    {ethers.formatUnits(campaign.totalDonated, 18)} USDC raised
+                    {ethers.formatUnits(campaign.totalDonated, 6)} USDC raised
                   </span>
                   <span>
-                    {ethers.formatUnits(campaign.goalAmount, 18)} USDC goal
+                    {ethers.formatUnits(campaign.goalAmount, 6)} USDC goal
                   </span>
                 </div>
               </div>
@@ -319,7 +334,7 @@ export default function DonationModal({
                           : "bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600"
                       }`}
                     >
-                      {suggestedAmount} USDC
+                      {suggestedAmount} {selectedToken?.symbol || "TOKEN"}
                     </button>
                   ))}
                 </div>
@@ -347,7 +362,7 @@ export default function DonationModal({
                   />
                   <div className="absolute inset-y-0 left-0 flex items-center pl-3">
                     <span className="text-gray-500 dark:text-gray-400 font-medium">
-                      USDC
+                      {selectedToken?.symbol || "TOKEN"}
                     </span>
                   </div>
                 </div>
@@ -361,22 +376,58 @@ export default function DonationModal({
                       Your Donation:
                     </span>
                     <span className="font-semibold text-green-900 dark:text-green-100">
-                      {amount} USDC
+                      {amount}{" "}
+                      {supportedTokens.find(
+                        (t) => t.address === (selectedToken?.address || "")
+                      )?.symbol || "TOKEN"}
                     </span>
                   </div>
                   <div className="text-xs text-green-700 dark:text-green-300 mt-1">
                     This will bring the campaign to{" "}
-                    {(
-                      ((Number(campaign.totalDonated) +
-                        parseFloat(amount) * 1e18) /
-                        Number(campaign.goalAmount)) *
-                      100
-                    ).toFixed(1)}
+                    {(() => {
+                      try {
+                        const decimals = selectedToken?.decimals ?? 6;
+                        const donationSmall = Number(
+                          ethers.parseUnits(amount, decimals)
+                        );
+                        return (
+                          ((Number(campaign.totalDonated) + donationSmall) /
+                            Number(campaign.goalAmount)) *
+                          100
+                        ).toFixed(1);
+                      } catch (e) {
+                        return "0.0";
+                      }
+                    })()}
                     % of its goal
                   </div>
                 </div>
               )}
             </>
+          )}
+
+          {/* Token selector - only show when not in approval step */}
+          {!needsApproval && (
+            <div className="mt-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Donate with
+              </label>
+              <select
+                value={selectedToken?.address}
+                onChange={(e) => {
+                  const addr = e.target.value;
+                  const t = supportedTokens.find((s) => s.address === addr);
+                  setSelectedToken(t);
+                }}
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
+              >
+                {supportedTokens.map((t) => (
+                  <option key={t.address} value={t.address}>
+                    {t.symbol} - {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
 
           {/* Action Buttons */}

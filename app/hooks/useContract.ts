@@ -5,6 +5,7 @@ import { useAccount } from 'wagmi';
 import { toast } from 'react-toastify';
 import { useEthersSigner } from './useClientSigner';
 import { DONOR_CONTRACT_ADDRESS, donorContractABI } from '../lib/contract';
+import { TOKEN_BY_ADDRESS } from '../../config/tokens';
 
 // Types based on your contract
 export type Campaign = {
@@ -52,7 +53,7 @@ export function useContract() {
   };
 
   // Create a new campaign
-  const createCampaign = async (campaignData: CampaignData) => {
+  const createCampaign = async (campaignData: CampaignData, tokenAddress?: string) => {
     if (!isConnected || !address) {
       toast.error('Please connect your wallet first');
       throw new Error('Wallet not connected');
@@ -95,8 +96,12 @@ export function useContract() {
 
       const contract = await getContract();
       
-      // Convert ETH amount to wei
-      const goalAmountWei = ethers.parseEther(campaignData.goalAmount);
+      // Convert goal amount to token smallest units using token decimals (fallback to 18)
+      const tokenInfo = tokenAddress
+        ? TOKEN_BY_ADDRESS[tokenAddress.toLowerCase()]
+        : undefined;
+      const decimals = tokenInfo?.decimals ?? 18;
+      const goalAmountWei = ethers.parseUnits(campaignData.goalAmount, decimals);
 
       console.log('Creating campaign with data:', {
         name: campaignData.name,
@@ -175,7 +180,10 @@ export function useContract() {
 
     try {
       const contract = await getContract();
-      const amountWei = ethers.parseEther(amount);
+        // Determine token decimals (fallback to 18)
+        const tokenInfo = TOKEN_BY_ADDRESS[tokenAddress?.toLowerCase()];
+        const decimals = tokenInfo?.decimals ?? 18;
+        const amountWei = ethers.parseUnits(amount, decimals);
 
       toast.update(toastId, { render: 'Confirming donation in your wallet...' });
 
@@ -531,6 +539,17 @@ export function useContract() {
     }
   };
 
+  const getCampaignTokenBalances = async (campaignId: number): Promise<[string[], bigint[]]> => {
+    const contract = await getContract();
+    return await contract.getCampaignTokenBalances(campaignId);
+  };
+
+  const getTokenInfo = (tokenAddress: string) => {
+  if (!tokenAddress) return { symbol: "UNKNOWN", decimals: 18 };
+  const info = TOKEN_BY_ADDRESS[tokenAddress.toLowerCase()];
+  return info ?? { symbol: "UNKNOWN", decimals: 18 };
+};
+
   return {
     // Write functions
     createCampaign,
@@ -547,6 +566,8 @@ export function useContract() {
     isCampaignSuccessful,
     getCampaignFundsByToken,
     hasRole,
+    getCampaignTokenBalances,
+    getTokenInfo,
     
     // State
     isLoading,
