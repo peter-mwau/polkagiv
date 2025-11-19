@@ -539,10 +539,121 @@ export function useContract() {
     }
   };
 
+  const getTokenByAddress = (tokenAddress: string) => {
+  const tokenMap: { [key: string]: { symbol: string; decimals: number } } = {
+    [process.env.NEXT_PUBLIC_USDC_CONTRACT_ADDRESS!.toLowerCase()]: { symbol: 'USDC', decimals: 6 },
+    [process.env.NEXT_PUBLIC_WETH_CONTRACT_ADDRESS!.toLowerCase()]: { symbol: 'WETH', decimals: 18 },
+    [process.env.NEXT_PUBLIC_WBTC_CONTRACT_ADDRESS!.toLowerCase()]: { symbol: 'WBTC', decimals: 8 },
+  };
+  
+  return tokenMap[tokenAddress.toLowerCase()] || { symbol: 'UNKNOWN', decimals: 18 };
+};
+
   const getCampaignTokenBalances = async (campaignId: number): Promise<[string[], bigint[]]> => {
     const contract = await getContract();
     return await contract.getCampaignTokenBalances(campaignId);
   };
+
+  // Improved reasonable amount checker
+const isReasonableAmount = (amount: number, symbol: string) => {
+  // These are reasonable ranges for each token type
+  const reasonableRanges: { [key: string]: { min: number; max: number } } = {
+    'USDC': { min: 0.01, max: 10000000 }, // $0.01 to $10M
+    'WETH': { min: 0.0001, max: 10000 }, // 0.0001 to 10,000 ETH
+    'WBTC': { min: 0.000001, max: 1000 }, // 0.000001 to 1,000 BTC
+  };
+
+  const range = reasonableRanges[symbol] || { min: 0, max: Infinity };
+  return amount >= range.min && amount <= range.max;
+};
+
+const getCampaignDonationsWithTokens = async (campaignId: number) => {
+  try {
+    const donations = await getCampaignDonations(campaignId);
+    const [tokenAddresses, tokenBalances] = await getCampaignTokenBalances(campaignId);
+    
+    console.log('🔍 Token Matching Debug:', {
+      campaignId,
+      donationsCount: donations.length,
+      tokenAddresses,
+      tokenBalances: tokenBalances.map(b => b?.toString() || 'null')
+    });
+
+    // Validate donations data
+    const validDonations = donations.filter(donation => 
+      donation && donation.amount !== undefined && donation.amount !== null
+    );
+
+    if (validDonations.length !== donations.length) {
+      console.warn('⚠️ Filtered out invalid donations:', {
+        original: donations.length,
+        valid: validDonations.length
+      });
+    }
+
+    // Create token map from environment variables
+    const tokenMap = {
+      [process.env.NEXT_PUBLIC_USDC_CONTRACT_ADDRESS!.toLowerCase()]: { 
+        symbol: 'USDC', 
+        decimals: 6 
+      },
+      [process.env.NEXT_PUBLIC_WETH_CONTRACT_ADDRESS!.toLowerCase()]: { 
+        symbol: 'WETH', 
+        decimals: 18 
+      },
+      [process.env.NEXT_PUBLIC_WBTC_CONTRACT_ADDRESS!.toLowerCase()]: { 
+        symbol: 'WBTC', 
+        decimals: 8 
+      },
+    };
+
+    // Map donations to tokens
+    const donationsWithTokens = validDonations.map((donation, index) => {
+      // Default to USDC as fallback
+      let tokenInfo = tokenMap[process.env.NEXT_PUBLIC_USDC_CONTRACT_ADDRESS!.toLowerCase()];
+      
+      // Try to find which token this donation belongs to
+      for (const [tokenAddress, info] of Object.entries(tokenMap)) {
+        const formattedAmount = parseFloat(ethers.formatUnits(donation.amount, info.decimals));
+        
+        // Simple check: if amount is reasonable for this token type
+        if (isReasonableAmount(formattedAmount, info.symbol)) {
+          tokenInfo = info;
+          console.log(`✅ Donation ${index + 1} matched to ${info.symbol}: ${formattedAmount}`);
+          break;
+        }
+      }
+
+      const matchedEntry = Object.entries(tokenMap).find(([, info]) => info.symbol === tokenInfo.symbol);
+      const selectedAddress = matchedEntry ? matchedEntry[0] : process.env.NEXT_PUBLIC_USDC_CONTRACT_ADDRESS!;
+
+      return {
+        ...donation,
+        tokenAddress: selectedAddress,
+        symbol: tokenInfo.symbol,
+        decimals: tokenInfo.decimals
+      };
+    });
+
+    console.log('🎯 Final mapped donations:', donationsWithTokens);
+    return donationsWithTokens;
+
+  } catch (error) {
+    console.error('❌ Error in getCampaignDonationsWithTokens:', error);
+    // Return empty array as fallback
+    return [];
+  }
+};
+
+// Also add this helper function to your useContract hook:
+const getTokenIcon = (symbol: string) => {
+  const icons: { [key: string]: string } = {
+    'USDC': '💵',
+    'WETH': '🔷', 
+    'WBTC': '🟡',
+  };
+  return icons[symbol] || '🪙';
+};
 
   const getTokenInfo = (tokenAddress: string) => {
   if (!tokenAddress) return { symbol: "UNKNOWN", decimals: 18 };
@@ -568,6 +679,8 @@ export function useContract() {
     hasRole,
     getCampaignTokenBalances,
     getTokenInfo,
+    getCampaignDonationsWithTokens,
+    getTokenIcon,
     
     // State
     isLoading,

@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import { Campaign } from "../contexts/CampaignsContext";
 import { useAccount } from "wagmi";
 import { ethers } from "ethers";
+import CampaignProgress from "./CampaignProgress";
 
 interface CampaignCardProps {
   campaign: Campaign;
@@ -228,21 +229,12 @@ export default function CampaignCard({
           </p>
 
           {/* Progress Section */}
-          <div className="mb-4">
-            <div className="flex justify-between items-center text-xs text-gray-500 dark:text-gray-400 mb-2">
-              <span>Funding Progress</span>
-              <span className="font-semibold">{progress.toFixed(1)}%</span>
-            </div>
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden">
-              <div
-                className={`h-2.5 rounded-full bg-gradient-to-r ${getStatusColor()} transition-all duration-1000 ease-out relative overflow-hidden`}
-                style={{ width: `${progress}%` }}
-              >
-                {/* Animated shine on progress bar */}
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" />
-              </div>
-            </div>
-          </div>
+          <CampaignProgress
+            campaign={campaign}
+            compact={true}
+            showDetails={false}
+            className="mb-4"
+          />
 
           {/* Stats Grid */}
           <div className="grid grid-cols-2 gap-3 mb-4 text-xs">

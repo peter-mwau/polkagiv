@@ -42,7 +42,7 @@ export function useTokenPrices(tokenIds: string[]) {
         setPrices({
           'usd-coin': { usd: 1, usd_24h_change: 0, last_updated_at: Date.now() / 1000 },
           'weth': { usd: 3213, usd_24h_change: 2.5, last_updated_at: Date.now() / 1000 },
-          'wrapped-bitcoin': { usd: 95526, usd_24h_change: 1.2, last_updated_at: Date.now() / 1000 },
+          'wrapped-bitcoin': { usd: 110464, usd_24h_change: 1.2, last_updated_at: Date.now() / 1000 },
         });
       } finally {
         setLoading(false);

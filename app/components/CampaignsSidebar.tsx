@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useCampaigns } from "../contexts/CampaignsContext";
 import { Campaign } from "../contexts/CampaignsContext";
 import { ethers } from "ethers";
+import CampaignProgress from "./CampaignProgress";
 
 interface CampaignsSidebarProps {
   selectedCampaign: Campaign | null;
@@ -216,39 +217,12 @@ export default function CampaignsSidebar({
               </p>
 
               {/* Progress Bar */}
-              <div className="mb-3">
-                <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-                  <span>Progress</span>
-                  <span>
-                    {typeof (campaign as unknown as { progress?: number })
-                      .progress === "number"
-                      ? Math.min(
-                          (campaign as unknown as { progress?: number })
-                            .progress!,
-                          100
-                        ).toFixed(1)
-                      : (
-                          (Number(campaign.totalDonated) /
-                            Number(campaign.goalAmount)) *
-                          100
-                        ).toFixed(1)}
-                    %
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
-                  <div
-                    className="bg-gradient-to-r from-green-400 to-blue-500 h-1.5 rounded-full transition-all duration-1000 ease-out"
-                    style={{
-                      width: `${Math.min(
-                        (Number(campaign.totalDonated) /
-                          Number(campaign.goalAmount)) *
-                          100,
-                        100
-                      )}%`,
-                    }}
-                  ></div>
-                </div>
-              </div>
+              <CampaignProgress
+                campaign={campaign}
+                compact={true}
+                showDetails={false}
+                className="mb-3"
+              />
 
               {/* Stats */}
               <div className="flex justify-between text-xs">

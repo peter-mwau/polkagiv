@@ -41,47 +41,117 @@ export function useTokenConversion() {
   };
 
     const convertToUSD = (amount: string | bigint, tokenAddress: string): number => {
-    if (!amount || !prices) return 0;
+  if (!amount || !prices) {
+    console.log('convertToUSD: No amount or prices', { amount, prices });
+    return 0;
+  }
 
-    try {
-      const tokenConfig = getTokenConfig(tokenAddress);
-      const formattedAmount = parseFloat(
-        typeof amount === 'bigint'
-          ? ethers.formatUnits(amount, tokenConfig.decimals)
-          : ethers.formatUnits(amount as string, tokenConfig.decimals)
-      );
-      // Resolve token price with multiple fallbacks to avoid incorrect 1:1 USD assumptions
-      let tokenPrice: number | undefined;
+  try {
+    const tokenConfig = getTokenConfig(tokenAddress);
+    console.log('🚀 convertToUSD Debug Start:', {
+      tokenAddress,
+      symbol: tokenConfig.symbol,
+      decimals: tokenConfig.decimals,
+      coingeckoId: tokenConfig.coingeckoId,
+      rawAmount: amount.toString()
+    });
 
-      if (tokenConfig.coingeckoId) {
-        tokenPrice = prices[tokenConfig.coingeckoId]?.usd;
+    const formattedAmount = parseFloat(
+      typeof amount === 'bigint'
+        ? ethers.formatUnits(amount, tokenConfig.decimals)
+        : ethers.formatUnits(amount as string, tokenConfig.decimals)
+    );
+    
+    console.log('📊 Amount Conversion:', {
+      formattedAmount,
+      calculation: `${amount.toString()} / 10^${tokenConfig.decimals} = ${formattedAmount}`
+    });
+
+    // Debug: Check all available price keys
+    console.log('💰 Available Prices:', Object.keys(prices).map(key => ({
+      key,
+      price: prices[key]?.usd
+    })));
+
+    let tokenPrice: number | undefined;
+
+    // Method 1: Coingecko ID
+    if (tokenConfig.coingeckoId) {
+      tokenPrice = prices[tokenConfig.coingeckoId]?.usd;
+      console.log('🔍 Price Check - Coingecko ID:', {
+        coingeckoId: tokenConfig.coingeckoId,
+        price: tokenPrice,
+        found: !!prices[tokenConfig.coingeckoId]
+      });
+    }
+
+    // Method 2: Symbol lookup
+    if (!tokenPrice && tokenConfig.symbol) {
+      const symbolKey = tokenConfig.symbol.toLowerCase();
+      tokenPrice = prices[symbolKey]?.usd;
+      console.log('🔍 Price Check - Symbol:', {
+        symbol: symbolKey,
+        price: tokenPrice,
+        found: !!prices[symbolKey]
+      });
+    }
+
+    // Method 3: Manual mapping fallback
+    if (!tokenPrice) {
+      const symbolMapping: { [key: string]: string } = {
+        'USDC': 'usd-coin',
+        'WETH': 'weth', 
+        'WBTC': 'wrapped-bitcoin',
+      };
+      
+      const mappedId = symbolMapping[tokenConfig.symbol];
+      if (mappedId) {
+        tokenPrice = prices[mappedId]?.usd;
+        console.log('🔍 Price Check - Mapped ID:', {
+          symbol: tokenConfig.symbol,
+          mappedId,
+          price: tokenPrice,
+          found: !!prices[mappedId]
+        });
       }
+    }
 
-      // Try symbol-based lookup (coingecko ids often match lowercase symbol)
-      if (!tokenPrice && tokenConfig.symbol) {
-        const bySymbol = prices[tokenConfig.symbol.toLowerCase()];
-        if (bySymbol?.usd) tokenPrice = bySymbol.usd;
-      }
+    // Method 4: Hardcoded fallback for testing
+    if (!tokenPrice) {
+      const fallbackPrices: { [key: string]: number } = {
+        'USDC': 1,
+        'WETH': 3213,
+        'WBTC': 110464,
+      };
+      tokenPrice = fallbackPrices[tokenConfig.symbol];
+      console.log('🆘 Using Fallback Price:', {
+        symbol: tokenConfig.symbol,
+        price: tokenPrice
+      });
+    }
 
-      // Try to find a token in the canonical TOKENS list by symbol and use its coingecko id
-      if (!tokenPrice && tokenConfig.symbol) {
-        const match = Object.values(TOKENS).find(
-          (t) => t.symbol.toLowerCase() === tokenConfig.symbol.toLowerCase()
-        );
-        if (match?.coingeckoId) tokenPrice = prices[match.coingeckoId]?.usd;
-      }
+    console.log('🎯 Final Price:', { tokenPrice });
 
-      // If still undefined, return 0 to avoid displaying misleading USD values
-      if (!tokenPrice) {
-        return 0;
-      }
-
-      return formattedAmount * tokenPrice;
-    } catch (error) {
-      console.error('Error converting to USD:', error);
+    if (!tokenPrice) {
+      console.log('❌ No price found for token:', tokenConfig.symbol);
       return 0;
     }
-  };
+
+    const result = formattedAmount * tokenPrice;
+    console.log('✅ Final Calculation:', {
+      formattedAmount,
+      tokenPrice,
+      result,
+      calculation: `${formattedAmount} ${tokenConfig.symbol} × $${tokenPrice} = $${result}`
+    });
+
+    return result;
+
+  } catch (error) {
+    console.error('💥 Error converting to USD:', error);
+    return 0;
+  }
+};
 
    const calculatePortfolioValue = async (
     campaignId: number,

@@ -1,7 +1,6 @@
-// components/PieChart.tsx
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 
 interface PieChartProps {
   data: Array<{
@@ -9,11 +8,19 @@ interface PieChartProps {
     value: number;
     color: string;
     percentage: number;
+    usdValue: number;
   }>;
   size?: number;
+  showTooltip?: boolean;
 }
 
-export default function PieChart({ data, size = 200 }: PieChartProps) {
+export default function PieChart({
+  data,
+  size = 200,
+  showTooltip = true,
+}: PieChartProps) {
+  const [hoveredSegment, setHoveredSegment] = useState<number | null>(null);
+
   if (!data || data.length === 0) {
     return (
       <div
@@ -27,7 +34,34 @@ export default function PieChart({ data, size = 200 }: PieChartProps) {
     );
   }
 
-  let accumulatedPercentage = 0;
+  // Precompute segments with start positions to avoid reassigning during render
+  const circumference = 2 * Math.PI * 15.9155;
+  const segments = (() => {
+    const list: Array<{
+      symbol: string;
+      color: string;
+      usdValue: number;
+      percentage: number;
+      segmentLength: number;
+      startPercent: number;
+    }> = [];
+    let acc = 0;
+    for (const item of data) {
+      const segmentPercentage = Math.max(0, Math.min(100, item.percentage));
+      const startPercent = acc;
+      const segmentLength = (segmentPercentage / 100) * circumference;
+      list.push({
+        symbol: item.symbol,
+        color: item.color,
+        usdValue: item.usdValue,
+        percentage: segmentPercentage,
+        segmentLength,
+        startPercent,
+      });
+      acc += segmentPercentage;
+    }
+    return list;
+  })();
 
   return (
     <div className="relative" style={{ width: size, height: size }}>
@@ -37,12 +71,12 @@ export default function PieChart({ data, size = 200 }: PieChartProps) {
         viewBox="0 0 42 42"
         className="transform -rotate-90"
       >
-        {data.map((item, index) => {
-          const segmentPercentage = item.percentage;
-          const dashArray = 2 * Math.PI * 15.9155; // circumference
-          const dashOffset = dashArray * (1 - accumulatedPercentage / 100);
-
-          accumulatedPercentage += segmentPercentage;
+        {segments.map((seg, index) => {
+          // ensure dasharray uses the remaining circumference as the gap portion
+          const gap = Math.max(0, circumference - seg.segmentLength);
+          const strokeDasharray = `${seg.segmentLength} ${gap}`;
+          // offset by the cumulative start percent so segments stack correctly
+          const strokeDashoffset = circumference * (1 - seg.startPercent / 100);
 
           return (
             <circle
@@ -51,11 +85,22 @@ export default function PieChart({ data, size = 200 }: PieChartProps) {
               cy="21"
               r="15.9155"
               fill="transparent"
-              stroke={item.color}
+              stroke={seg.color}
               strokeWidth="3"
-              strokeDasharray={dashArray}
-              strokeDashoffset={dashOffset}
-              className="transition-all duration-500 ease-out"
+              strokeDasharray={strokeDasharray}
+              strokeDashoffset={strokeDashoffset}
+              strokeLinecap="butt"
+              className="transition-all duration-500 ease-out cursor-pointer"
+              style={{
+                filter:
+                  hoveredSegment === index
+                    ? "brightness(1.2)"
+                    : "brightness(1)",
+                transform:
+                  hoveredSegment === index ? "scale(1.02)" : "scale(1)",
+              }}
+              onMouseEnter={() => setHoveredSegment(index)}
+              onMouseLeave={() => setHoveredSegment(null)}
             />
           );
         })}
@@ -70,6 +115,22 @@ export default function PieChart({ data, size = 200 }: PieChartProps) {
           <div className="text-xs text-gray-600 dark:text-gray-400">Assets</div>
         </div>
       </div>
+
+      {/* Tooltip */}
+      {showTooltip && hoveredSegment !== null && (
+        <div
+          className="absolute z-50 px-3 py-2 text-sm text-white bg-gray-900 rounded-lg shadow-lg"
+          style={{
+            top: "50%",
+            left: "110%",
+            transform: "translateY(-50%)",
+          }}
+        >
+          <div className="font-semibold">{data[hoveredSegment].symbol}</div>
+          <div>${data[hoveredSegment].usdValue.toFixed(2)}</div>
+          <div>{data[hoveredSegment].percentage.toFixed(1)}%</div>
+        </div>
+      )}
     </div>
   );
 }
