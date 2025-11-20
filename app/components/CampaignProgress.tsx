@@ -95,33 +95,54 @@ export default function CampaignProgress({
 
   const detected = detectDecimals(campaign.goalAmount, campaign.totalDonated);
   const detectedDecimals = detected.dec;
-  const fallbackGoalValue = detected.goalVal;
   const fallbackRaisedValue = detected.donatedVal;
 
-  const fallbackProgress =
-    fallbackGoalValue > 0
-      ? Math.min((fallbackRaisedValue / fallbackGoalValue) * 100, 100)
+  // As an extra safety: if detection yields 0 but there is on-chain donated amount,
+  // try all candidate decimals and pick the largest non-zero formatted donated value.
+  const computeMaxDonatedAcrossCandidates = (donated: bigint) => {
+    const candidates = [6, 8, 18];
+    let maxVal = 0;
+    for (const dec of candidates) {
+      try {
+        const v = parseFloat(ethers.formatUnits(donated, dec));
+        if (isFinite(v) && v > maxVal) maxVal = v;
+      } catch {
+        continue;
+      }
+    }
+    return maxVal;
+  };
+
+  // Prefer portfolio USD for raised value if available, but compute goalUSD from
+  // the detected decimals for the on-chain goal so legacy campaigns stored
+  // with 18 decimals don't show an enormous goal (calculatePortfolioValue
+  // currently assumes 6 decimals for goalAmount).
+  const computedGoalUSD = parseFloat(
+    ethers.formatUnits(campaign.goalAmount, detectedDecimals)
+  );
+
+  let computedRaisedUSD =
+    portfolio && portfolio.totalUSDValue > 0
+      ? portfolio.totalUSDValue
+      : fallbackRaisedValue;
+
+  if (
+    (computedRaisedUSD === 0 || !isFinite(computedRaisedUSD)) &&
+    campaign.totalDonated > 0n
+  ) {
+    const attempted = computeMaxDonatedAcrossCandidates(campaign.totalDonated);
+    if (attempted > 0) {
+      computedRaisedUSD = attempted;
+    }
+  }
+
+  const progress =
+    computedGoalUSD > 0
+      ? Math.min((computedRaisedUSD / computedGoalUSD) * 100, 100)
       : 0;
 
-  // For display: if decimals detected is 6 (USDC), show as USD; otherwise show numeric value and indicate units
-  const fallbackRaisedUSD =
-    detectedDecimals === 6 ? fallbackRaisedValue : fallbackRaisedValue; // numeric fallback
-  const fallbackGoalUSD =
-    detectedDecimals === 6 ? fallbackGoalValue : fallbackGoalValue;
-
-  // Use portfolio data if available and valid, otherwise use fallback
-  const progress =
-    portfolio && portfolio.totalUSDValue > 0
-      ? portfolio.progress
-      : fallbackProgress;
-  const raisedUSD =
-    portfolio && portfolio.totalUSDValue > 0
-      ? portfolio.raisedUSD
-      : fallbackRaisedUSD;
-  const goalUSD =
-    portfolio && portfolio.totalUSDValue > 0
-      ? portfolio.goalUSD
-      : fallbackGoalUSD;
+  const raisedUSD = computedRaisedUSD;
+  const goalUSD = computedGoalUSD;
 
   const daysLeft = campaign.deadline
     ? Math.max(

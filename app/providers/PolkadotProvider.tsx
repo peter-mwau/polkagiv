@@ -288,7 +288,7 @@ export const PolkadotProvider: React.FC<PolkadotProviderProps> = ({
   return (
     <PolkadotContext.Provider value={value}>
       {children}
-      {process.env.NODE_ENV !== "production" && (
+      {process.env.NEXT_PUBLIC_NODE_ENV === "production" && (
         <>
           <div
             style={{ position: "fixed", right: 12, bottom: 12, zIndex: 9999 }}

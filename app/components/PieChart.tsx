@@ -75,8 +75,10 @@ export default function PieChart({
           // ensure dasharray uses the remaining circumference as the gap portion
           const gap = Math.max(0, circumference - seg.segmentLength);
           const strokeDasharray = `${seg.segmentLength} ${gap}`;
-          // offset by the cumulative start percent so segments stack correctly
-          const strokeDashoffset = circumference * (1 - seg.startPercent / 100);
+          // use the cumulative end percent (start + segment) to position the segment
+          const cumulativePercent = seg.startPercent + seg.percentage;
+          const strokeDashoffset =
+            circumference * (1 - cumulativePercent / 100);
 
           return (
             <circle

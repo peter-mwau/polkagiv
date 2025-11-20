@@ -67,99 +67,185 @@ export default function CampaignDetails({
       if (activeTab === "donations") {
         setIsLoadingDonations(true);
         try {
-          // Get raw donations
-          const rawDonations = await getCampaignDonations(campaign.id);
+          // Prefer the enriched helper which already maps tokenAddress/decimals
+          if (getCampaignDonationsWithTokens) {
+            let enriched = await getCampaignDonationsWithTokens(campaign.id);
 
-          // Get token balances to understand which tokens are used
-          const [tokenAddresses, tokenBalances] =
-            await getCampaignTokenBalances(campaign.id);
-
-          console.log("🎯 Donations Debug:", {
-            rawDonations,
-            tokenAddresses,
-            tokenBalances: tokenBalances.map((b) => b.toString()),
-          });
-
-          // Create token map from environment variables
-          const tokenMap = {
-            [process.env.NEXT_PUBLIC_USDC_CONTRACT_ADDRESS!.toLowerCase()]: {
-              symbol: "USDC",
-              decimals: 6,
-            },
-            [process.env.NEXT_PUBLIC_WETH_CONTRACT_ADDRESS!.toLowerCase()]: {
-              symbol: "WETH",
-              decimals: 18,
-            },
-            [process.env.NEXT_PUBLIC_WBTC_CONTRACT_ADDRESS!.toLowerCase()]: {
-              symbol: "WBTC",
-              decimals: 8,
-            },
-          };
-
-          // PROPERLY map donations to tokens based on amount patterns
-          const donationsWithTokens = rawDonations.map((donation, index) => {
-            // Extract the actual values from the array structure
-            const donor = donation[0] || "Unknown";
-            const amount = donation[1] || BigInt(0);
-            const timestamp = donation[2] || BigInt(0);
-
-            // Detect which token this donation belongs to based on amount magnitude
-            let tokenInfo =
-              tokenMap[
-                process.env.NEXT_PUBLIC_USDC_CONTRACT_ADDRESS!.toLowerCase()
-              ]; // Default to USDC
-
-            if (amount > BigInt(10 ** 15) && amount < BigInt(10 ** 20)) {
-              // Large amounts = WETH (18 decimals)
-              tokenInfo =
-                tokenMap[
-                  process.env.NEXT_PUBLIC_WETH_CONTRACT_ADDRESS!.toLowerCase()
-                ];
-            } else if (amount > BigInt(10 ** 7) && amount < BigInt(10 ** 10)) {
-              // Medium amounts = WBTC (8 decimals)
-              tokenInfo =
-                tokenMap[
-                  process.env.NEXT_PUBLIC_WBTC_CONTRACT_ADDRESS!.toLowerCase()
-                ];
-            }
-
-            // For specific known amounts, use direct mapping
-            const amountStr = amount.toString();
-            if (
-              amountStr === "5000000000000000000" ||
-              amountStr === "14000000000000000000"
-            ) {
-              tokenInfo =
-                tokenMap[
-                  process.env.NEXT_PUBLIC_WETH_CONTRACT_ADDRESS!.toLowerCase()
-                ];
-            } else if (amountStr === "9000000000000000000") {
-              tokenInfo =
-                tokenMap[
-                  process.env.NEXT_PUBLIC_WBTC_CONTRACT_ADDRESS!.toLowerCase()
-                ];
-            }
-
-            // determine the actual token address we picked from the tokenMap
-            const matchedEntry = Object.entries(tokenMap).find(
-              ([, info]) => info.symbol === tokenInfo.symbol
+            // If enriched donations are missing tokenAddress/decimals, try to
+            // reuse the portfolio tokenBalances (which are already correct)
+            // to annotate donations. This mirrors what the portfolio loader does
+            // and solves cases where donations arrive without token metadata.
+            const needsMapping = enriched.some(
+              (d: any) =>
+                !d.tokenAddress || d.tokenAddress === "" || !d.decimals
             );
-            const selectedAddress = matchedEntry
-              ? matchedEntry[0]
-              : process.env.NEXT_PUBLIC_USDC_CONTRACT_ADDRESS!;
 
-            return {
-              donor,
-              amount,
-              timestamp,
-              tokenAddress: selectedAddress,
-              symbol: tokenInfo.symbol,
-              decimals: tokenInfo.decimals,
+            if (needsMapping) {
+              try {
+                const portfolioData = await calculatePortfolioValue(
+                  campaign.id,
+                  campaign.goalAmount.toString(),
+                  getCampaignTokenBalances
+                );
+
+                const tokenCandidates = portfolioData.tokenBalances || [];
+
+                const isReasonableAmount = (
+                  amountNum: number,
+                  symbol: string
+                ) => {
+                  const ranges: { [k: string]: { min: number; max: number } } =
+                    {
+                      USDC: { min: 0.001, max: 1e9 },
+                      WETH: { min: 0.000001, max: 1e6 },
+                      WBTC: { min: 0.0000001, max: 1e5 },
+                    };
+                  const r = ranges[symbol] || { min: 0, max: Infinity };
+                  return amountNum >= r.min && amountNum <= r.max;
+                };
+
+                enriched = enriched.map((don: any) => {
+                  if (don.tokenAddress && don.decimals) return don;
+
+                  // try to match by formatting amount with each candidate's decimals
+                  for (const t of tokenCandidates) {
+                    try {
+                      const amt = parseFloat(
+                        ethers.formatUnits(don.amount ?? "0", t.decimals)
+                      );
+                      if (
+                        !Number.isNaN(amt) &&
+                        isReasonableAmount(amt, t.symbol)
+                      ) {
+                        return {
+                          ...don,
+                          tokenAddress: t.tokenAddress || t.tokenAddress,
+                          symbol: t.symbol,
+                          decimals: t.decimals,
+                        };
+                      }
+                    } catch (e) {
+                      continue;
+                    }
+                  }
+
+                  // fallback: leave as-is but ensure tokenAddress exists (USDC)
+                  return {
+                    ...don,
+                    tokenAddress:
+                      process.env.NEXT_PUBLIC_USDC_CONTRACT_ADDRESS || "",
+                    symbol: don.symbol || "USDC",
+                    decimals: don.decimals ?? 6,
+                  };
+                });
+              } catch (err) {
+                console.warn("Failed to enrich donations from portfolio:", err);
+              }
+            }
+
+            setCampaignDonations(enriched);
+            console.log("✅ Loaded enriched donations:", enriched);
+          } else {
+            // Fallback: fetch raw donations and attempt to map (legacy)
+            const rawDonations = await getCampaignDonations(campaign.id);
+
+            // Get token balances to understand which tokens are used
+            const [tokenAddresses, tokenBalances] =
+              await getCampaignTokenBalances(campaign.id);
+
+            console.log("🎯 Donations Debug (fallback):", {
+              rawDonations,
+              tokenAddresses,
+              tokenBalances: tokenBalances.map((b) => b.toString()),
+            });
+
+            // Create token map from environment variables
+            const tokenMap = {
+              [process.env.NEXT_PUBLIC_USDC_CONTRACT_ADDRESS!.toLowerCase()]: {
+                symbol: "USDC",
+                decimals: 6,
+              },
+              [process.env.NEXT_PUBLIC_WETH_CONTRACT_ADDRESS!.toLowerCase()]: {
+                symbol: "WETH",
+                decimals: 18,
+              },
+              [process.env.NEXT_PUBLIC_WBTC_CONTRACT_ADDRESS!.toLowerCase()]: {
+                symbol: "WBTC",
+                decimals: 8,
+              },
             };
-          });
 
-          setCampaignDonations(donationsWithTokens);
-          console.log("✅ CORRECT donations loaded:", donationsWithTokens);
+            // PROPERLY map donations to tokens based on amount patterns
+            const donationsWithTokens = rawDonations.map((donation, index) => {
+              // Extract the actual values from the array structure
+              const donor = donation[0] || "Unknown";
+              const amount = donation[1] || BigInt(0);
+              const timestamp = donation[2] || BigInt(0);
+
+              // Detect which token this donation belongs to based on amount magnitude
+              let tokenInfo =
+                tokenMap[
+                  process.env.NEXT_PUBLIC_USDC_CONTRACT_ADDRESS!.toLowerCase()
+                ]; // Default to USDC
+
+              if (amount > BigInt(10 ** 15) && amount < BigInt(10 ** 20)) {
+                // Large amounts = WETH (18 decimals)
+                tokenInfo =
+                  tokenMap[
+                    process.env.NEXT_PUBLIC_WETH_CONTRACT_ADDRESS!.toLowerCase()
+                  ];
+              } else if (
+                amount > BigInt(10 ** 7) &&
+                amount < BigInt(10 ** 10)
+              ) {
+                // Medium amounts = WBTC (8 decimals)
+                tokenInfo =
+                  tokenMap[
+                    process.env.NEXT_PUBLIC_WBTC_CONTRACT_ADDRESS!.toLowerCase()
+                  ];
+              }
+
+              // For specific known amounts, use direct mapping
+              const amountStr = amount.toString();
+              if (
+                amountStr === "5000000000000000000" ||
+                amountStr === "14000000000000000000"
+              ) {
+                tokenInfo =
+                  tokenMap[
+                    process.env.NEXT_PUBLIC_WETH_CONTRACT_ADDRESS!.toLowerCase()
+                  ];
+              } else if (amountStr === "9000000000000000000") {
+                tokenInfo =
+                  tokenMap[
+                    process.env.NEXT_PUBLIC_WBTC_CONTRACT_ADDRESS!.toLowerCase()
+                  ];
+              }
+
+              // determine the actual token address we picked from the tokenMap
+              const matchedEntry = Object.entries(tokenMap).find(
+                ([, info]) => info.symbol === tokenInfo.symbol
+              );
+              const selectedAddress = matchedEntry
+                ? matchedEntry[0]
+                : process.env.NEXT_PUBLIC_USDC_CONTRACT_ADDRESS!;
+
+              return {
+                donor,
+                amount,
+                timestamp,
+                tokenAddress: selectedAddress,
+                symbol: tokenInfo.symbol,
+                decimals: tokenInfo.decimals,
+              };
+            });
+
+            setCampaignDonations(donationsWithTokens);
+            console.log(
+              "✅ CORRECT donations loaded (fallback):",
+              donationsWithTokens
+            );
+          }
         } catch (error) {
           console.error("Error fetching donations:", error);
           toast.error("Failed to load donation history");
@@ -662,13 +748,31 @@ export default function CampaignDetails({
                         )
                         .map((donation, index) => {
                           // CORRECT formatting - now we have the proper structure
-                          const formattedAmount = ethers.formatUnits(
-                            donation.amount,
-                            donation.decimals
-                          );
+                          // Guard against missing amount/decimals
+                          const rawAmount = donation?.amount ?? "0";
+                          const decimals =
+                            donation?.decimals ??
+                            getTokenConfig(donation?.tokenAddress)?.decimals ??
+                            18;
+
+                          let formattedAmount = "0";
+                          try {
+                            formattedAmount = ethers.formatUnits(
+                              rawAmount,
+                              decimals
+                            );
+                          } catch (err) {
+                            console.warn(
+                              "Failed to format donation amount, falling back to 0:",
+                              err,
+                              { rawAmount, decimals }
+                            );
+                            formattedAmount = "0";
+                          }
+
                           const usdValue = safeConvertToUSD(
-                            donation.amount,
-                            donation.tokenAddress
+                            rawAmount,
+                            donation?.tokenAddress || ""
                           );
 
                           return (
@@ -681,14 +785,16 @@ export default function CampaignDetails({
                                   {/* Donor Avatar */}
                                   <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
                                     <span className="text-white font-semibold text-sm">
-                                      {donation.donor.slice(2, 4).toUpperCase()}
+                                      {donation?.donor
+                                        ?.slice(2, 4)
+                                        .toUpperCase()}
                                     </span>
                                   </div>
 
                                   <div>
                                     <div className="font-mono text-sm text-gray-900 dark:text-white">
-                                      {donation.donor.slice(0, 8)}...
-                                      {donation.donor.slice(-6)}
+                                      {donation?.donor?.slice(0, 8)}...
+                                      {donation?.donor?.slice(-6)}
                                     </div>
                                     <div className="text-xs text-gray-500 dark:text-gray-400">
                                       {new Date(
@@ -735,7 +841,7 @@ export default function CampaignDetails({
                                         100
                                       ).toFixed(4)
                                     : (
-                                        (Number(donation.amount) /
+                                        (Number(donation?.amount ?? 0) /
                                           Number(campaign.goalAmount)) *
                                         100
                                       ).toFixed(4)}
@@ -783,10 +889,27 @@ export default function CampaignDetails({
                     </h4>
                     <div className="space-y-4">
                       {recentDonations.map((donation, index) => {
-                        const formattedAmount = ethers.formatUnits(
-                          donation.amount,
-                          donation.decimals
-                        );
+                        const rawAmount = donation?.amount ?? "0";
+                        const decimals =
+                          donation?.decimals ??
+                          getTokenConfig(donation?.tokenAddress)?.decimals ??
+                          18;
+
+                        let formattedAmount = "0";
+                        try {
+                          formattedAmount = ethers.formatUnits(
+                            rawAmount,
+                            decimals
+                          );
+                        } catch (err) {
+                          console.warn(
+                            "Failed to format recent donation amount:",
+                            err,
+                            { rawAmount, decimals }
+                          );
+                          formattedAmount = "0";
+                        }
+
                         return (
                           <div
                             key={index}
